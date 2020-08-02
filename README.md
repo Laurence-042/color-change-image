@@ -37,6 +37,7 @@ See [Configuration Reference](https://cli.vuejs.org/config/).
 如果已知一个图片的长宽，那么就能把图片转成一维点阵向量的形式（就像二维数组在内存中的真实存放方式是按行拼接在一起的一维数组一样），那么就是向量分析了。A为元素为三维向量（RGB）的N维向量（N为长宽乘积），B为元素为四维向量（RGBA）的N维向量，C为元素为三维向量的N维向量。为了方便起见，我们将三维向量RGB当作Alpha值为1的RGBA，这样ABC的形式都一样了。
 
 假设abc为ABC中位置相同的三个元素，下标的RGBA分辨代表红绿蓝透明通道，根据叠加的原理，我们可以得到
+
 <img src="http://latex.codecogs.com/gif.latex?c_A=1-(1-a_A)(1-b_A), c_R=a_Ra_A(1-b_A)+b_Rb_A" />
 
 <img src="http://latex.codecogs.com/gif.latex?c_G" />与<img src="http://latex.codecogs.com/gif.latex?c_B" />的计算方式同<img src="http://latex.codecogs.com/gif.latex?c_R" />
@@ -50,7 +51,9 @@ See [Configuration Reference](https://cli.vuejs.org/config/).
 这似乎很令人沮丧，这表示我们没有唯一的拆分方案。但是如果我们给它加一点限制呢？
 
 把R通道的公式变一下形
+
 <img src="http://latex.codecogs.com/gif.latex?\begin{aligned}c_R=a_R(1-b_A)+b_Rb_A&=>c_R=a_R-a_Rb_A+b_Rb_A\\&=>c_R-a_R=b_A(b_R-a_R)\\&=>\frac{c_R-a_R}{b_R-a_R}=b_A\\&=>\frac{c_R-a_R}{b_A}+a_R=b_R\\&=>\frac{a_R-c_R}{a_R-b_R}=b_A\\&=>a_R-\frac{a_R-c_R}{b_A}=b_R\end{aligned}" />
+
 显然，b的色彩约浓烈，其Alpha值越小，透明度越高。所以如果我们总是要求b的透明度尽可能高，那么就应该使<img src="http://latex.codecogs.com/gif.latex?b_R" />尽可能大，比如当c的通道大于a的时直接设为255，否则设为0，来试一下？
 
 于是这个项目就这么被写出来了。不过当它把某个通道值非常极端（比如0,255这样的）的颜色当作A图的颜色进行处理时，效果很不理想，几乎纯黑也不咋样，只有对非常适中的颜色效果才比较好。
