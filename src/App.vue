@@ -7,20 +7,20 @@
         label="Select image to process"
         @change="selectImage"
       ></v-file-input>
-      <!-- <div class="d-flex align-center">
-        <h1>Test</h1>
-      </div>-->
 
       <v-spacer></v-spacer>
 
-      <v-btn href="#" target="_blank" text>
+      <v-btn href="https://github.com/Laurence-042/color-change-image" target="_blank" text>
         <span>View it on github</span>
         <v-icon>mdi-open-in-new</v-icon>
       </v-btn>
     </v-app-bar>
 
     <v-main>
-      <div class="d-flex flex-column align-center">
+      <div
+        class="d-flex flex-column align-center"
+        :style="{'background-color':advanceBackgroundColor, 'min-height': '100%'}"
+      >
         <div v-show="isImageLoaded">
           <div class="d-flex flex-column justify-center">
             <canvas class="full-width" id="inputCanvas" @mousedown="pickColor"></canvas>
@@ -30,6 +30,15 @@
             </div>
 
             <p>It will take about {{estimatedTime}}s to finish processing, click button above to start</p>
+
+            <v-dialog v-model="isImageProcessing" hide-overlay persistent width="300">
+              <v-card color="primary" dark>
+                <v-card-text>
+                  <p>Please wait for about {{estimatedTime}}s</p>
+                  <v-progress-linear indeterminate color="white" class="mb-0"></v-progress-linear>
+                </v-card-text>
+              </v-card>
+            </v-dialog>
           </div>
         </div>
         <div v-show="!isImageLoaded">
@@ -37,11 +46,15 @@
         </div>
 
         <v-btn @click="changeBackground">Change Theme</v-btn>
+        <v-btn @click="toggleAdvanceChangeBackground">Customize background color</v-btn>
+        <v-color-picker
+          v-show="advanceChangeBackground"
+          class="margin-auto"
+          v-model="pickedBackgroundColor"
+        ></v-color-picker>
 
-        <div v-show="imageProcessing">
-          <!-- <p>{{processStatus[0]}}/{{processStatus[1]}}</p> -->
-          <canvas class="full-width" id="outputCanvas"></canvas>
-        </div>
+        <canvas v-show="false" class="full-width" id="outputCanvas"></canvas>
+        <v-img v-show="isImageProcessed" :src="imageOut"></v-img>
       </div>
     </v-main>
   </v-app>
@@ -58,12 +71,16 @@ export default {
   name: "App",
   data: () => ({
     isImageLoaded: false,
-    imageOrigin: null,
-    colorRGBA: [255, 255, 255, 255],
-    imageProcessing: false,
+    isImageProcessing: false,
+    isImageProcessed: false,
+    imageIn: null,
+    imageOut: null,
+    colorRGB: [255, 255, 255, 255],
     processStatus: [0, 100],
     useDarkTheme: false,
     estimatedTime: 0,
+    advanceChangeBackground: false,
+    pickedBackgroundColor: { r: 255, g: 255, b: 255 },
   }),
   mounted() {},
   watch: {},
@@ -74,18 +91,14 @@ export default {
     outputCanvas() {
       return document.getElementById("outputCanvas");
     },
+
     colorHint() {
-      return (
-        "rgba(" +
-        this.colorRGBA[0] +
-        "," +
-        this.colorRGBA[1] +
-        "," +
-        this.colorRGBA[2] +
-        "," +
-        this.colorRGBA[3] +
-        ")"
-      );
+      return this.formatColor(this.colorRGB);
+    },
+    advanceBackgroundColor() {
+      return this.advanceChangeBackground
+        ? this.formatColor(this.pickedBackgroundColor)
+        : "";
     },
   },
   methods: {
@@ -96,7 +109,7 @@ export default {
         let image = e.target.result;
 
         this.drawImageOnCanvas(this.inputCanvas, image);
-        this.imageOrigin = image;
+        this.imageIn = image;
         this.isImageLoaded = true;
       };
     },
@@ -119,51 +132,68 @@ export default {
         (e.layerX * this.inputCanvas.width) / this.inputCanvas.offsetWidth;
       let y =
         (e.layerY * this.inputCanvas.height) / this.inputCanvas.offsetHeight;
-      this.colorRGBA = this.inputCanvas
+      let raw_colorRGB = this.inputCanvas
         .getContext("2d")
         .getImageData(x, y, 1, 1).data;
+      this.colorRGB = {
+        r: raw_colorRGB[0],
+        g: raw_colorRGB[1],
+        b: raw_colorRGB[2],
+      };
+    },
+    formatColor(raw_color) {
+      return (
+        "#" +
+        ((1 << 24) + (raw_color.r << 16) + (raw_color.g << 8) + raw_color.b)
+          .toString(16)
+          .substr(1)
+      );
     },
     changeBackground() {
+      this.advanceChangeBackground = false;
       this.useDarkTheme = !this.useDarkTheme;
       this.$vuetify.theme.isDark = this.useDarkTheme;
+    },
+    toggleAdvanceChangeBackground() {
+      this.advanceChangeBackground = !this.advanceChangeBackground;
     },
     processImageAsync() {
       setTimeout(() => {
         this.processImage();
-      }, 0);
-      this.imageProcessing = true;
+      }, 100);
+      this.isImageProcessing = true;
+      this.$nextTick();
       console.log("async");
     },
     processImage() {
-      this.imageProcessing = true;
       this.processStatus = [0, this.inputCanvas.height];
       this.$nextTick();
 
       this.outputCanvas.width = this.inputCanvas.width;
       this.outputCanvas.height = this.inputCanvas.height;
 
-      let imageOriginData = this.inputCanvas
+      let imageInData = this.inputCanvas
         .getContext("2d")
         .getImageData(0, 0, this.inputCanvas.width, this.inputCanvas.height);
       let imageFrontData = this.outputCanvas
         .getContext("2d")
         .getImageData(0, 0, this.outputCanvas.width, this.outputCanvas.height);
-      let backgroundColor = this.colorRGBA;
+      let backgroundColor = [this.colorRGB.r, this.colorRGB.g, this.colorRGB.b];
 
       console.log(imageFrontData.width + " " + imageFrontData.height);
 
-      for (let i = 0; i < imageOriginData.height; i++) {
-        for (let j = 0; j < imageOriginData.width; j++) {
+      for (let i = 0; i < imageInData.height; i++) {
+        for (let j = 0; j < imageInData.width; j++) {
           // get min available imageFrontData.Alpha
           let imgFront_pixel_alpha = 0;
           for (let color_channel = 0; color_channel < 3; color_channel++) {
             let tmp;
             if (
-              imageOriginData.getChannelOfPixel(i, j, color_channel) >
+              imageInData.getChannelOfPixel(i, j, color_channel) >
               backgroundColor[color_channel]
             ) {
               tmp =
-                imageOriginData.getChannelOfPixel(i, j, color_channel) -
+                imageInData.getChannelOfPixel(i, j, color_channel) -
                 backgroundColor[color_channel];
               if (tmp != 0) {
                 // when encounter 0 / 0, to get min available Alpha, assume tmp is 0
@@ -172,7 +202,7 @@ export default {
             } else {
               tmp =
                 backgroundColor[color_channel] -
-                imageOriginData.getChannelOfPixel(i, j, color_channel);
+                imageInData.getChannelOfPixel(i, j, color_channel);
               if (tmp != 0) {
                 tmp /= backgroundColor[color_channel];
               }
@@ -194,11 +224,11 @@ export default {
           // now imgFront_pixel_alpha is the min available alpha
           for (let color_channel = 0; color_channel < 3; color_channel++) {
             if (
-              imageOriginData.getChannelOfPixel(i, j, color_channel) >
+              imageInData.getChannelOfPixel(i, j, color_channel) >
               backgroundColor[color_channel]
             ) {
               let frontPixel =
-                imageOriginData.getChannelOfPixel(i, j, color_channel) -
+                imageInData.getChannelOfPixel(i, j, color_channel) -
                 backgroundColor[color_channel];
               frontPixel /= imgFront_pixel_alpha;
               frontPixel += backgroundColor[color_channel];
@@ -208,7 +238,7 @@ export default {
               let frontPixel = backgroundColor[color_channel];
               let tmp =
                 backgroundColor[color_channel] -
-                imageOriginData.getChannelOfPixel(i, j, color_channel);
+                imageInData.getChannelOfPixel(i, j, color_channel);
               tmp /= imgFront_pixel_alpha;
               frontPixel -= tmp;
 
@@ -218,10 +248,12 @@ export default {
         }
         this.processStatus[0] = i;
         this.$nextTick();
-        console.log(i + "/" + imageOriginData.height);
+        console.log(i + "/" + imageInData.height);
       }
       this.outputCanvas.getContext("2d").putImageData(imageFrontData, 0, 0);
-      this.drawImageOnCanvas(this.outputCanvas, this.outputCanvas.toDataURL());
+      this.imageOut = this.outputCanvas.toDataURL();
+      this.isImageProcessing = false;
+      this.isImageProcessed = true;
     },
   },
 };
@@ -231,7 +263,9 @@ export default {
 .full-width {
   width: 100%;
 }
-
+.margin-auto {
+  margin: auto;
+}
 /* .dark{
   background: ;
 } */
