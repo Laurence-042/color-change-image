@@ -22,7 +22,7 @@
         :style="{'background-color':advanceBackgroundColor, 'min-height': '100%'}"
       >
         <div v-show="isImageLoaded">
-          <div class="d-flex flex-column justify-center">
+          <div class="d-flex flex-column justify-center align-center">
             <canvas class="full-width" id="inputCanvas" @mousedown="pickColor"></canvas>
             <div class="d-flex flex-row justify-center">
               <p class="text-center text-h6" :style="{background:colorHint}">{{colorHint}}</p>
@@ -54,7 +54,7 @@
         ></v-color-picker>
 
         <canvas v-show="false" class="full-width" id="outputCanvas"></canvas>
-        <v-img v-show="isImageProcessed" :src="imageOut"></v-img>
+        <img v-show="isImageProcessed" :src="imageOut">
       </div>
     </v-main>
   </v-app>
@@ -75,7 +75,7 @@ export default {
     isImageProcessed: false,
     imageIn: null,
     imageOut: null,
-    colorRGB: [255, 255, 255, 255],
+    colorRGB: { r: 122, g: 122, b: 122 },
     processStatus: [0, 100],
     useDarkTheme: false,
     estimatedTime: 0,
