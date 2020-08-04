@@ -22,24 +22,22 @@
         :style="{'background-color':advanceBackgroundColor, 'min-height': '100%'}"
       >
         <div v-show="isImageLoaded">
-          <div class="d-flex flex-column justify-center align-center">
-            <canvas class="full-width" id="inputCanvas" @mousedown="pickColor"></canvas>
-            <div class="d-flex flex-row justify-center">
-              <p class="text-center text-h6" :style="{background:colorHint}">{{colorHint}}</p>
-              <v-btn @click="processImageAsync">Process</v-btn>
-            </div>
-
-            <p>It will take about {{estimatedTime}}s to finish processing, click button above to start</p>
-
-            <v-dialog v-model="isImageProcessing" hide-overlay persistent width="300">
-              <v-card color="primary" dark>
-                <v-card-text>
-                  <p>Please wait for about {{estimatedTime}}s</p>
-                  <v-progress-linear indeterminate color="white" class="mb-0"></v-progress-linear>
-                </v-card-text>
-              </v-card>
-            </v-dialog>
+          <canvas class="full-width" id="inputCanvas" @mousedown="pickColor"></canvas>
+          <div class="d-flex flex-row justify-center">
+            <p class="text-center text-h6" :style="{background:colorHint}">{{colorHint}}</p>
+            <v-btn @click="processImageAsync">Process</v-btn>
           </div>
+
+          <p>It will take about {{estimatedTime}}s to finish processing, click button above to start</p>
+
+          <v-dialog v-model="isImageProcessing" hide-overlay persistent width="300">
+            <v-card color="primary" dark>
+              <v-card-text>
+                <p>Please wait for about {{estimatedTime}}s</p>
+                <v-progress-linear indeterminate color="white" class="mb-0"></v-progress-linear>
+              </v-card-text>
+            </v-card>
+          </v-dialog>
         </div>
         <div v-show="!isImageLoaded">
           <p class="text-center text-h6">Select an image first</p>
@@ -52,9 +50,10 @@
           class="margin-auto"
           v-model="pickedBackgroundColor"
         ></v-color-picker>
+        <v-btn @click="processImageV2">processImageV2</v-btn>
 
-        <canvas v-show="false" class="full-width" id="outputCanvas"></canvas>
-        <img v-show="isImageProcessed" :src="imageOut">
+        <canvas class="full-width" id="outputCanvas" @mousedown="pickColor"></canvas>
+        <img v-show="isImageProcessed" :src="imageOut" class="full-width" />
       </div>
     </v-main>
   </v-app>
@@ -64,9 +63,26 @@
 ImageData.prototype.getChannelOfPixel = function (row, col, channel) {
   return this.data[row * (this.width * 4) + col * 4 + channel];
 };
+ImageData.prototype.getPixel = function (row, col) {
+  let baseOffset = row * (this.width * 4) + col * 4;
+  return [
+    this.data[baseOffset + 0],
+    this.data[baseOffset + 1],
+    this.data[baseOffset + 2],
+    this.data[baseOffset + 3],
+  ];
+};
 ImageData.prototype.setChannelOfPixel = function (row, col, channel, value) {
   this.data[row * (this.width * 4) + col * 4 + channel] = value;
 };
+ImageData.prototype.setPixel = function (row, col, value) {
+  let baseOffset = row * (this.width * 4) + col * 4;
+  this.data[baseOffset + 0] = value[0];
+  this.data[baseOffset + 1] = value[1];
+  this.data[baseOffset + 2] = value[2];
+  this.data[baseOffset + 3] = value[3];
+};
+
 export default {
   name: "App",
   data: () => ({
@@ -128,13 +144,12 @@ export default {
       this.estimatedTime = (width * height * 7) / 9068000;
     },
     pickColor(e) {
-      let x =
-        (e.layerX * this.inputCanvas.width) / this.inputCanvas.offsetWidth;
-      let y =
-        (e.layerY * this.inputCanvas.height) / this.inputCanvas.offsetHeight;
-      let raw_colorRGB = this.inputCanvas
-        .getContext("2d")
-        .getImageData(x, y, 1, 1).data;
+      let x = (e.layerX * e.target.width) / e.target.offsetWidth;
+      let y = (e.layerY * e.target.height) / e.target.offsetHeight;
+
+      let raw_colorRGB = e.target.getContext("2d").getImageData(x, y, 1, 1)
+        .data;
+      console.log(raw_colorRGB);
       this.colorRGB = {
         r: raw_colorRGB[0],
         g: raw_colorRGB[1],
@@ -187,7 +202,7 @@ export default {
           // get min available imageFrontData.Alpha
           let imgFront_pixel_alpha = 0;
           for (let color_channel = 0; color_channel < 3; color_channel++) {
-            let tmp;
+            let tmp = 0;
             if (
               imageInData.getChannelOfPixel(i, j, color_channel) >
               backgroundColor[color_channel]
@@ -244,6 +259,166 @@ export default {
 
               imageFrontData.setChannelOfPixel(i, j, color_channel, frontPixel);
             }
+          }
+        }
+        this.processStatus[0] = i;
+        this.$nextTick();
+        console.log(i + "/" + imageInData.height);
+      }
+      this.outputCanvas.getContext("2d").putImageData(imageFrontData, 0, 0);
+      this.imageOut = this.outputCanvas.toDataURL();
+      this.isImageProcessing = false;
+      this.isImageProcessed = true;
+    },
+    processImageV2() {
+      let getMaxChannel = (rgb, withIndex = false) => {
+        let indexOfMax = 0;
+
+        rgb = rgb.slice(0, 3);
+
+        let max = rgb.reduce((acc, current, i) =>
+          current > acc ? ((indexOfMax = i), current) : acc
+        );
+        return withIndex ? [indexOfMax, max] : max;
+      };
+
+      let getMinChannel = (rgb, withIndex = false) => {
+        let indexOfMin = 0;
+
+        rgb = rgb.slice(0, 3);
+
+        let min = rgb.reduce((acc, current, i) =>
+          current < acc ? ((indexOfMin = i), current) : acc
+        );
+        return withIndex ? [indexOfMin, min] : min;
+      };
+
+      let calcReferenceColorWithoutShadow = (rgb) => {
+        // rgb(105,140,224)=>rgb(120,159,255)
+        // 105*255/224 = 120
+        // 140*255/224 = 159
+        // 224*255/224 = 255
+        let res = [0, 0, 0];
+
+        let maxChannelValue = getMaxChannel(rgb);
+        for (let i = 0; i < 3; i++) {
+          res[i] = Math.round((rgb[i] * 255) / maxChannelValue);
+        }
+        return res;
+      };
+
+      let calcReferenceColorWithoutHighlight = (rgb) => {
+        // rgb(105,140,224)=>rgb(0,66,224)
+        // 224-105=119
+        // 224-140=84
+        // 224-119/119*224=0
+        // 224-84/119*224=66
+        let res = [0, 0, 0];
+
+        let minChannelValue = getMinChannel(rgb);
+        let maxChannelValue = getMaxChannel(rgb);
+        let tmp = maxChannelValue - minChannelValue;
+        for (let i = 0; i < 3; i++) {
+          res[i] = Math.round(
+            maxChannelValue -
+              ((maxChannelValue - rgb[i]) * maxChannelValue) / tmp
+          );
+        }
+        return res;
+      };
+
+      let calcBrightness = (rgb) => {
+        return rgb[0] ** 2 + rgb[1] ** 2 + rgb[2] ** 2;
+      };
+
+      let calcDistance = (rgb0, rgb1) => {
+        return (
+          (rgb0[0] - rgb1[0]) ** 2 +
+          (rgb0[1] - rgb1[1]) ** 2 +
+          (rgb0[2] - rgb1[2]) ** 2
+        );
+      };
+
+      let validateIfDoChange = (
+        backgroundRgbWithoutShadow,
+        backgroundRgbWithoutHighlight,
+        inputRgbWithoutShadow,
+        inputRgbWithoutHighlight
+      ) => {
+        let withoutShadowDistance = calcDistance(
+          backgroundRgbWithoutShadow,
+          inputRgbWithoutShadow
+        );
+        let withoutHighlightDistance = calcDistance(
+          backgroundRgbWithoutHighlight,
+          inputRgbWithoutHighlight
+        );
+        // console.log(withoutShadowDistance+", "+withoutHighlightDistance)
+        return withoutShadowDistance <4000 && withoutHighlightDistance <6000;
+      };
+
+      console.log(calcReferenceColorWithoutShadow([105, 140, 224]));
+      console.log(calcReferenceColorWithoutHighlight([105, 140, 224]));
+
+      // initialize
+      this.processStatus = [0, this.inputCanvas.height];
+      this.$nextTick();
+
+      this.outputCanvas.width = this.inputCanvas.width;
+      this.outputCanvas.height = this.inputCanvas.height;
+
+      let imageInData = this.inputCanvas
+        .getContext("2d")
+        .getImageData(0, 0, this.inputCanvas.width, this.inputCanvas.height);
+      let imageFrontData = this.outputCanvas
+        .getContext("2d")
+        .getImageData(0, 0, this.outputCanvas.width, this.outputCanvas.height);
+      let backgroundColor = [this.colorRGB.r, this.colorRGB.g, this.colorRGB.b];
+
+      let maximumBrightness = 3 * 255 ** 2;
+
+      let backgroundColorWithoutShadow = calcReferenceColorWithoutShadow(
+        backgroundColor
+      );
+      let backgroundColorWithoutHighlight = calcReferenceColorWithoutHighlight(
+        backgroundColor
+      );
+      let backgroundBrightness = calcBrightness(backgroundColor);
+
+      console.log(imageFrontData.width + " " + imageFrontData.height);
+
+      for (let i = 0; i < imageInData.height; i++) {
+        for (let j = 0; j < imageInData.width; j++) {
+          let inputPixel = imageInData.getPixel(i, j);
+          let inputBrightness = calcBrightness(inputPixel);
+          if (
+            !validateIfDoChange(
+              backgroundColorWithoutShadow,
+              backgroundColorWithoutHighlight,
+              calcReferenceColorWithoutShadow(inputPixel),
+              calcReferenceColorWithoutHighlight(inputPixel)
+            )
+          ) {
+            imageFrontData.setPixel(i, j, inputPixel);
+            continue;
+          }
+          // imageFrontData.setPixel(i, j, inputPixel);
+          if (inputBrightness > backgroundBrightness) {
+            // highlight
+            imageFrontData.setPixel(i, j, [255, 255, 255, 127]);
+            let alpha =
+              ((inputBrightness - backgroundBrightness) /
+                (maximumBrightness - backgroundBrightness)) *
+              255;
+            imageFrontData.setChannelOfPixel(i, j, 3, alpha);
+          } else {
+            // shadow
+            imageFrontData.setPixel(i, j, [0, 0, 0, 127]);
+            let alpha =
+              ((backgroundBrightness - inputBrightness) /
+                backgroundBrightness) *
+              255;
+            imageFrontData.setChannelOfPixel(i, j, 3, alpha);
           }
         }
         this.processStatus[0] = i;
