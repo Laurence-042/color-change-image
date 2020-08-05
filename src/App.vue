@@ -4,7 +4,7 @@
       <v-file-input
         class="full-width"
         accept="image/*"
-        label="Select image to process"
+        label="选择待加工图片"
         @change="selectImage"
       ></v-file-input>
 
@@ -28,11 +28,11 @@
             class="text-center text-h6"
             :style="{background:colorHint}"
           >{{colorHint}}</p>
-          <v-btn v-show="isImageLoaded" @click="processImageAsync">Process</v-btn>
+          <v-btn v-show="isImageLoaded" @click="processImageAsync">开始加工</v-btn>
 
           <p
-            v-show="isImageLoaded"
-          >It will take about {{estimatedTime}}s to finish processing, click button above to start</p>
+            v-show="isImageLoaded" class="text-center"
+          >加工过程预计需要大约{{estimatedTime}}秒</p>
 
           <v-dialog
             v-show="isImageLoaded"
@@ -43,18 +43,26 @@
           >
             <v-card color="primary" dark>
               <v-card-text>
-                <p>Please wait for about {{estimatedTime}}s</p>
+                <p>请稍等大约{{estimatedTime}}秒</p>
                 <v-progress-linear indeterminate color="white" class="mb-0"></v-progress-linear>
               </v-card-text>
             </v-card>
           </v-dialog>
         </div>
         <div v-show="!isImageLoaded">
-          <p class="text-center text-h6">Select an image first</p>
+          <p class="text-center text-h6">请先在顶栏处选取图片</p>
+          <p class="text-center">使用方法：</p>
+          <ol>
+            <li>点击顶栏上传图片</li>
+            <li>通过点击在图片中选中将要成为变色图变色部分的颜色</li>
+            <li>点“开始加工”按钮</li>
+            <li>耐心等待加工完成，然后使用切换主题或者自定义背景色按钮来调整背景颜色预览变色图效果</li>
+            <li>提示：替换对比度较低且不过亮过暗的颜色效果会比较好</li>
+          </ol>
         </div>
 
-        <v-btn @click="changeBackground">Change Theme</v-btn>
-        <v-btn @click="toggleAdvanceChangeBackground">Customize background color</v-btn>
+        <v-btn @click="changeBackground">切换亮色/暗色主题</v-btn>
+        <v-btn @click="toggleAdvanceChangeBackground">自定义背景色</v-btn>
         <v-color-picker
           v-show="advanceChangeBackground"
           class="margin-auto"
