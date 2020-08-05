@@ -2,7 +2,7 @@
   <v-app>
     <v-app-bar app color="primary" dark>
       <v-file-input
-        class="full-width"
+        class="Colowidth-80percent"
         accept="image/*"
         label="Select image to process"
         @change="selectImage"
@@ -21,8 +21,8 @@
         class="d-flex flex-column align-center"
         :style="{'background-color':advanceBackgroundColor, 'min-height': '100%'}"
       >
-        <div v-show="isImageLoaded">
-          <canvas class="full-width" id="inputCanvas" @mousedown="pickColor"></canvas>
+        <div v-show="isImageLoaded" class="full-width d-flex flex-column align-center">
+          <canvas class="width-80percent" id="inputCanvas" @mousedown="pickColor"></canvas>
           <div class="d-flex flex-row justify-center">
             <p class="text-center text-h6" :style="{background:colorHint}">{{colorHint}}</p>
             <v-btn @click="processImageAsync">Process</v-btn>
@@ -52,14 +52,18 @@
         ></v-color-picker>
         <v-btn @click="processImageV2">processImageV2</v-btn>
 
-        <canvas class="full-width" id="outputCanvas" @mousedown="pickColor"></canvas>
-        <img v-show="isImageProcessed" :src="imageOut" class="full-width" />
+        <p>{{debug}}</p>
+        <canvas class="width-80percent" id="outputCanvas" @mousedown="compareColor"></canvas>
+        <img v-show="isImageProcessed" :src="imageOut" class="width-80percent" />
       </div>
     </v-main>
   </v-app>
 </template>
 
 <script>
+import ColorTool from './utils/ColorTool.js'
+
+
 ImageData.prototype.getChannelOfPixel = function (row, col, channel) {
   return this.data[row * (this.width * 4) + col * 4 + channel];
 };
@@ -97,6 +101,7 @@ export default {
     estimatedTime: 0,
     advanceChangeBackground: false,
     pickedBackgroundColor: { r: 255, g: 255, b: 255 },
+    debug: "",
   }),
   mounted() {},
   watch: {},
@@ -155,6 +160,39 @@ export default {
         g: raw_colorRGB[1],
         b: raw_colorRGB[2],
       };
+    },
+    compareColor(e) {
+      let x = (e.layerX * e.target.width) / e.target.offsetWidth;
+      let y = (e.layerY * e.target.height) / e.target.offsetHeight;
+
+      let raw_colorRGB = e.target.getContext("2d").getImageData(x, y, 1, 1)
+        .data;
+        
+      console.log(raw_colorRGB);
+
+      let backgroundColor = [this.colorRGB.r, this.colorRGB.g, this.colorRGB.b];
+      raw_colorRGB = raw_colorRGB.slice(0,3)
+      let backgroundColorWithoutShadow = ColorTool.calcReferenceColorWithoutShadow(
+        backgroundColor
+      );
+      let backgroundColorWithoutHighlight = ColorTool.calcReferenceColorWithoutHighlight(
+        backgroundColor
+      );
+      let selectedColorWithoutShadow = ColorTool.calcReferenceColorWithoutShadow(
+        raw_colorRGB
+      );
+      let selectedColorWithoutHighlight = ColorTool.calcReferenceColorWithoutHighlight(
+        raw_colorRGB
+      );
+      this.debug = JSON.stringify({
+        selected: this.formatColor({
+          r: raw_colorRGB[0],
+          g: raw_colorRGB[1],
+          b: raw_colorRGB[2],
+        }),
+        distanceWithoutShadow:ColorTool.calcDistance(backgroundColorWithoutShadow,selectedColorWithoutShadow),
+        distanceWithoutHighlight:ColorTool.calcDistance(backgroundColorWithoutHighlight,selectedColorWithoutHighlight),
+      });
     },
     formatColor(raw_color) {
       return (
@@ -271,94 +309,8 @@ export default {
       this.isImageProcessed = true;
     },
     processImageV2() {
-      let getMaxChannel = (rgb, withIndex = false) => {
-        let indexOfMax = 0;
-
-        rgb = rgb.slice(0, 3);
-
-        let max = rgb.reduce((acc, current, i) =>
-          current > acc ? ((indexOfMax = i), current) : acc
-        );
-        return withIndex ? [indexOfMax, max] : max;
-      };
-
-      let getMinChannel = (rgb, withIndex = false) => {
-        let indexOfMin = 0;
-
-        rgb = rgb.slice(0, 3);
-
-        let min = rgb.reduce((acc, current, i) =>
-          current < acc ? ((indexOfMin = i), current) : acc
-        );
-        return withIndex ? [indexOfMin, min] : min;
-      };
-
-      let calcReferenceColorWithoutShadow = (rgb) => {
-        // rgb(105,140,224)=>rgb(120,159,255)
-        // 105*255/224 = 120
-        // 140*255/224 = 159
-        // 224*255/224 = 255
-        let res = [0, 0, 0];
-
-        let maxChannelValue = getMaxChannel(rgb);
-        for (let i = 0; i < 3; i++) {
-          res[i] = Math.round((rgb[i] * 255) / maxChannelValue);
-        }
-        return res;
-      };
-
-      let calcReferenceColorWithoutHighlight = (rgb) => {
-        // rgb(105,140,224)=>rgb(0,66,224)
-        // 224-105=119
-        // 224-140=84
-        // 224-119/119*224=0
-        // 224-84/119*224=66
-        let res = [0, 0, 0];
-
-        let minChannelValue = getMinChannel(rgb);
-        let maxChannelValue = getMaxChannel(rgb);
-        let tmp = maxChannelValue - minChannelValue;
-        for (let i = 0; i < 3; i++) {
-          res[i] = Math.round(
-            maxChannelValue -
-              ((maxChannelValue - rgb[i]) * maxChannelValue) / tmp
-          );
-        }
-        return res;
-      };
-
-      let calcBrightness = (rgb) => {
-        return rgb[0] ** 2 + rgb[1] ** 2 + rgb[2] ** 2;
-      };
-
-      let calcDistance = (rgb0, rgb1) => {
-        return (
-          (rgb0[0] - rgb1[0]) ** 2 +
-          (rgb0[1] - rgb1[1]) ** 2 +
-          (rgb0[2] - rgb1[2]) ** 2
-        );
-      };
-
-      let validateIfDoChange = (
-        backgroundRgbWithoutShadow,
-        backgroundRgbWithoutHighlight,
-        inputRgbWithoutShadow,
-        inputRgbWithoutHighlight
-      ) => {
-        let withoutShadowDistance = calcDistance(
-          backgroundRgbWithoutShadow,
-          inputRgbWithoutShadow
-        );
-        let withoutHighlightDistance = calcDistance(
-          backgroundRgbWithoutHighlight,
-          inputRgbWithoutHighlight
-        );
-        // console.log(withoutShadowDistance+", "+withoutHighlightDistance)
-        return withoutShadowDistance <4000 && withoutHighlightDistance <6000;
-      };
-
-      console.log(calcReferenceColorWithoutShadow([105, 140, 224]));
-      console.log(calcReferenceColorWithoutHighlight([105, 140, 224]));
+      console.log(ColorTool.calcReferenceColorWithoutShadow([105, 140, 224]));
+      console.log(ColorTool.calcReferenceColorWithoutHighlight([105, 140, 224]));
 
       // initialize
       this.processStatus = [0, this.inputCanvas.height];
@@ -377,26 +329,26 @@ export default {
 
       let maximumBrightness = 3 * 255 ** 2;
 
-      let backgroundColorWithoutShadow = calcReferenceColorWithoutShadow(
+      let backgroundColorWithoutShadow = ColorTool.calcReferenceColorWithoutShadow(
         backgroundColor
       );
-      let backgroundColorWithoutHighlight = calcReferenceColorWithoutHighlight(
+      let backgroundColorWithoutHighlight = ColorTool.calcReferenceColorWithoutHighlight(
         backgroundColor
       );
-      let backgroundBrightness = calcBrightness(backgroundColor);
+      let backgroundBrightness = ColorTool.calcBrightness(backgroundColor);
 
       console.log(imageFrontData.width + " " + imageFrontData.height);
 
       for (let i = 0; i < imageInData.height; i++) {
         for (let j = 0; j < imageInData.width; j++) {
           let inputPixel = imageInData.getPixel(i, j);
-          let inputBrightness = calcBrightness(inputPixel);
+          let inputBrightness = ColorTool.calcBrightness(inputPixel);
           if (
-            !validateIfDoChange(
+            !ColorTool.validateIfDoChange(
               backgroundColorWithoutShadow,
               backgroundColorWithoutHighlight,
-              calcReferenceColorWithoutShadow(inputPixel),
-              calcReferenceColorWithoutHighlight(inputPixel)
+              ColorTool.calcReferenceColorWithoutShadow(inputPixel),
+              ColorTool.calcReferenceColorWithoutHighlight(inputPixel)
             )
           ) {
             imageFrontData.setPixel(i, j, inputPixel);
@@ -437,6 +389,9 @@ export default {
 <style>
 .full-width {
   width: 100%;
+}
+.width-80percent {
+  width: 80%;
 }
 .margin-auto {
   margin: auto;
