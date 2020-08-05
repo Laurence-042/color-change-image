@@ -21,7 +21,7 @@
         class="d-flex flex-column align-center"
         :style="{'background-color':advanceBackgroundColor, 'min-height': '100%','width':'80%','margin':'auto'}"
       >
-        <div v-show="isImageLoaded" class="d-flex flex-column justify-center align-center">
+        <div v-show="isImageLoaded" class="d-flex flex-column justify-center align-center full-width">
             <canvas class="full-width" id="inputCanvas" @mousedown="pickColor"></canvas>
             <div class="d-flex flex-row justify-center">
               <p class="text-center text-h6" :style="{background:colorHint}">{{colorHint}}</p>
