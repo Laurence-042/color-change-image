@@ -21,23 +21,33 @@
         class="d-flex flex-column align-center"
         :style="{'background-color':advanceBackgroundColor, 'min-height': '100%','width':'80%','margin':'auto'}"
       >
-        <div v-show="isImageLoaded" class="d-flex flex-column justify-center align-center full-width">
-            <canvas class="full-width" id="inputCanvas" @mousedown="pickColor"></canvas>
-            <div class="d-flex flex-row justify-center">
-              <p class="text-center text-h6" :style="{background:colorHint}">{{colorHint}}</p>
-              <v-btn @click="processImageAsync">Process</v-btn>
-            </div>
+        <div class="d-flex flex-column justify-center align-center full-width">
+          <canvas v-show="isImageLoaded" class="full-width" id="inputCanvas" @mousedown="pickColor"></canvas>
+          <p
+            v-show="isImageLoaded"
+            class="text-center text-h6"
+            :style="{background:colorHint}"
+          >{{colorHint}}</p>
+          <v-btn v-show="isImageLoaded" @click="processImageAsync">Process</v-btn>
 
-            <p>It will take about {{estimatedTime}}s to finish processing, click button above to start</p>
+          <p
+            v-show="isImageLoaded"
+          >It will take about {{estimatedTime}}s to finish processing, click button above to start</p>
 
-            <v-dialog v-model="isImageProcessing" hide-overlay persistent width="300">
-              <v-card color="primary" dark>
-                <v-card-text>
-                  <p>Please wait for about {{estimatedTime}}s</p>
-                  <v-progress-linear indeterminate color="white" class="mb-0"></v-progress-linear>
-                </v-card-text>
-              </v-card>
-            </v-dialog>
+          <v-dialog
+            v-show="isImageLoaded"
+            v-model="isImageProcessing"
+            hide-overlay
+            persistent
+            width="300"
+          >
+            <v-card color="primary" dark>
+              <v-card-text>
+                <p>Please wait for about {{estimatedTime}}s</p>
+                <v-progress-linear indeterminate color="white" class="mb-0"></v-progress-linear>
+              </v-card-text>
+            </v-card>
+          </v-dialog>
         </div>
         <div v-show="!isImageLoaded">
           <p class="text-center text-h6">Select an image first</p>
@@ -52,7 +62,7 @@
         ></v-color-picker>
 
         <canvas v-show="false" class="full-width" id="outputCanvas"></canvas>
-        <img v-show="isImageProcessed" :src="imageOut" class="full-width">
+        <img v-show="isImageProcessed" :src="imageOut" class="full-width" />
       </div>
     </v-main>
   </v-app>
