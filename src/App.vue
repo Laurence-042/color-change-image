@@ -19,10 +19,9 @@
     <v-main>
       <div
         class="d-flex flex-column align-center"
-        :style="{'background-color':advanceBackgroundColor, 'min-height': '100%'}"
+        :style="{'background-color':advanceBackgroundColor, 'min-height': '100%','width':'80%','margin':'auto'}"
       >
-        <div v-show="isImageLoaded">
-          <div class="d-flex flex-column justify-center align-center">
+        <div v-show="isImageLoaded" class="d-flex flex-column justify-center align-center">
             <canvas class="full-width" id="inputCanvas" @mousedown="pickColor"></canvas>
             <div class="d-flex flex-row justify-center">
               <p class="text-center text-h6" :style="{background:colorHint}">{{colorHint}}</p>
@@ -39,7 +38,6 @@
                 </v-card-text>
               </v-card>
             </v-dialog>
-          </div>
         </div>
         <div v-show="!isImageLoaded">
           <p class="text-center text-h6">Select an image first</p>
@@ -54,7 +52,7 @@
         ></v-color-picker>
 
         <canvas v-show="false" class="full-width" id="outputCanvas"></canvas>
-        <img v-show="isImageProcessed" :src="imageOut">
+        <img v-show="isImageProcessed" :src="imageOut" class="full-width">
       </div>
     </v-main>
   </v-app>
