@@ -1,12 +1,7 @@
 <template>
   <v-app>
     <v-app-bar app color="primary" dark>
-      <v-file-input
-        class="full-width"
-        accept="image/*"
-        label="选择待加工图片"
-        @change="selectImage"
-      ></v-file-input>
+      <v-file-input class="full-width" accept="image/*" label="选择待加工图片" @change="selectImage"></v-file-input>
 
       <v-spacer></v-spacer>
 
@@ -17,10 +12,7 @@
     </v-app-bar>
 
     <v-main>
-      <div
-        class="d-flex flex-column align-center"
-        :style="{'background-color':advanceBackgroundColor, 'min-height': '100%','width':'80%','margin':'auto'}"
-      >
+      <div class="d-flex flex-column align-center" style="min-height:100%; width:80%; margin:auto">
         <div class="d-flex flex-column justify-center align-center full-width">
           <canvas v-show="isImageLoaded" class="full-width" id="inputCanvas" @mousedown="pickColor"></canvas>
           <p
@@ -30,9 +22,7 @@
           >{{colorHint}}</p>
           <v-btn v-show="isImageLoaded" @click="processImageAsync">开始加工</v-btn>
 
-          <p
-            v-show="isImageLoaded" class="text-center"
-          >加工过程预计需要大约{{estimatedTime}}秒</p>
+          <p v-show="isImageLoaded" class="text-center">加工过程预计需要大约{{estimatedTime}}秒</p>
 
           <v-dialog
             v-show="isImageLoaded"
@@ -62,15 +52,48 @@
         </div>
 
         <v-btn @click="changeBackground">切换亮色/暗色主题</v-btn>
-        <v-btn @click="toggleAdvanceChangeBackground">自定义背景色</v-btn>
-        <v-color-picker
-          v-show="advanceChangeBackground"
-          class="margin-auto"
-          v-model="pickedBackgroundColor"
-        ></v-color-picker>
+        <v-btn @click="toggleAdvanceChangeBackground">自定义背景</v-btn>
+        <div v-show="advanceChangeBackground" class="d-flex flex-column align-center">
+          <select v-show="advanceChangeBackground" v-model="selectedBackgroundMode">
+            <option
+              v-for="(backgroundModeOption,index) in backgroundModeOptions"
+              :key="index"
+              :value="backgroundModeOption"
+            >{{backgroundModeOption}}</option>
+          </select>
+
+          <v-color-picker
+            v-show="advanceChangeBackground&&selectedBackgroundMode=='选择纯色'"
+            class="margin-auto"
+            v-model="pickedBackgroundColor"
+          ></v-color-picker>
+          <v-file-input
+            v-show="advanceChangeBackground&&selectedBackgroundMode=='本机背景图片'"
+            accept="image/*"
+            label="选择背景图片图片"
+            @change="selectBackgroundImage"
+          ></v-file-input>
+          <select
+            v-show="advanceChangeBackground&&selectedBackgroundMode=='内置背景图片'"
+            v-model="selectedBuildInBackgroundImage"
+          >
+            <option :value="'assets/logo.png'" selected>默认</option>
+            <option
+              v-for="(buildInBackgroundImagePath,buildInBackgroundImageName) in buildInBackgroundImagesPaths"
+              :key="buildInBackgroundImageName"
+              :value="buildInBackgroundImagePath"
+            >{{buildInBackgroundImageName}}</option>
+          </select>
+        </div>
 
         <canvas v-show="false" class="full-width" id="outputCanvas"></canvas>
-        <img v-show="isImageProcessed" :src="imageOut" class="full-width" />
+        <img
+          v-show="isImageProcessed"
+          :src="imageOut"
+          :style="advanceBackground"
+          class="full-width"
+          style="background-position-x:center;background-position-y:center;background-size:cover;"
+        />
       </div>
     </v-main>
   </v-app>
@@ -96,7 +119,12 @@ export default {
     useDarkTheme: false,
     estimatedTime: 0,
     advanceChangeBackground: false,
+    backgroundModeOptions: ["选择纯色", "内置背景图片", "本机背景图片"],
+    selectedBackgroundMode: "选择纯色",
     pickedBackgroundColor: { r: 255, g: 255, b: 255 },
+    selectedBackgroundImage: "assets/logo.png",
+    buildInBackgroundImagesPaths: { logo: "assets/logo.png" },
+    selectedBuildInBackgroundImage: "assets/logo.png",
   }),
   mounted() {},
   watch: {},
@@ -111,10 +139,28 @@ export default {
     colorHint() {
       return this.formatColor(this.colorRGB);
     },
-    advanceBackgroundColor() {
-      return this.advanceChangeBackground
-        ? this.formatColor(this.pickedBackgroundColor)
-        : "";
+    advanceBackground() {
+      if (!this.advanceChangeBackground) {
+        return {};
+      }
+      switch (this.selectedBackgroundMode) {
+        case "选择纯色":
+          return {
+            "background-color": this.formatColor(this.pickedBackgroundColor),
+          };
+        case "内置背景图片":
+          return {
+            "background-image":
+              "url(" + require("@/" + this.selectedBuildInBackgroundImage) + ")",
+              "background-size":"cover",
+          };
+        case "本机背景图片":
+          return {
+            "background-image": "url(" + this.selectedBackgroundImage + ")",
+            "background-size":"cover",
+          };
+      }
+      return {};
     },
   },
   methods: {
@@ -127,6 +173,13 @@ export default {
         this.drawImageOnCanvas(this.inputCanvas, image);
         this.imageIn = image;
         this.isImageLoaded = true;
+      };
+    },
+    selectBackgroundImage(file) {
+      let reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (e) => {
+        this.selectedBackgroundImage = e.target.result;
       };
     },
     drawImageOnCanvas(canvas, imageDataUrl) {
