@@ -14,7 +14,15 @@
     <v-main>
       <div class="d-flex flex-column align-center" style="min-height:100%; width:80%; margin:auto">
         <div class="d-flex flex-column justify-center align-center full-width">
-          <canvas v-show="isImageLoaded" class="full-width" id="inputCanvas" @mousedown="pickColor"></canvas>
+          <canvas
+            v-show="isImageLoaded"
+            class="full-width"
+            id="inputCanvas"
+            @dblclick="pickColor"
+            @mousedown="drawing=true"
+            @mousemove="processImagePart"
+            @mouseup="drawing=false"
+          ></canvas>
           <p
             v-show="isImageLoaded"
             class="text-center text-h6"
@@ -100,21 +108,38 @@
 </template>
 
 <script>
-ImageData.prototype.getChannelOfPixel = function (row, col, channel) {
-  return this.data[row * (this.width * 4) + col * 4 + channel];
-};
-ImageData.prototype.setChannelOfPixel = function (row, col, channel, value) {
-  this.data[row * (this.width * 4) + col * 4 + channel] = value;
-};
+import ImageProcessor from "./util/ImageProcessor"
+
 export default {
   name: "App",
   data: () => ({
+    /**
+     * 待处理图片是否已加载
+     */
     isImageLoaded: false,
+    /**
+     * 待处理图片是否正在处理
+     */
     isImageProcessing: false,
+    /**
+     * 待处理图片是否已处理完成
+     */
     isImageProcessed: false,
+    /**
+     * 待处理图片
+     */
     imageIn: null,
+    /**
+     * 处理后图片
+     */
     imageOut: null,
+
+    /**
+     * 选中的参考颜色
+     */
     colorRGB: { r: 122, g: 122, b: 122 },
+    drawing:false,
+
     processStatus: [0, 100],
     useDarkTheme: false,
     estimatedTime: 0,
@@ -151,13 +176,15 @@ export default {
         case "内置背景图片":
           return {
             "background-image":
-              "url(" + require("@/" + this.selectedBuildInBackgroundImage) + ")",
-              "background-size":"cover",
+              "url(" +
+              require("@/" + this.selectedBuildInBackgroundImage) +
+              ")",
+            "background-size": "cover",
           };
         case "本机背景图片":
           return {
             "background-image": "url(" + this.selectedBackgroundImage + ")",
-            "background-size":"cover",
+            "background-size": "cover",
           };
       }
       return {};
@@ -234,6 +261,17 @@ export default {
       this.$nextTick();
       console.log("async");
     },
+    processImagePart(e) {
+      if(!this.drawing){
+        return;
+      }
+      let x =
+        (e.layerX * this.inputCanvas.width) / this.inputCanvas.offsetWidth;
+      let y =
+        (e.layerY * this.inputCanvas.height) / this.inputCanvas.offsetHeight;
+        console.log("draw("+x+","+y+")");
+        return x+y;
+    },
     processImage() {
       this.processStatus = [0, this.inputCanvas.height];
       this.$nextTick();
@@ -244,82 +282,23 @@ export default {
       let imageInData = this.inputCanvas
         .getContext("2d")
         .getImageData(0, 0, this.inputCanvas.width, this.inputCanvas.height);
-      let imageFrontData = this.outputCanvas
+      let imageOutData = this.outputCanvas
         .getContext("2d")
         .getImageData(0, 0, this.outputCanvas.width, this.outputCanvas.height);
       let backgroundColor = [this.colorRGB.r, this.colorRGB.g, this.colorRGB.b];
 
-      console.log(imageFrontData.width + " " + imageFrontData.height);
+      console.log(imageOutData.width + " " + imageOutData.height);
 
       for (let i = 0; i < imageInData.height; i++) {
         for (let j = 0; j < imageInData.width; j++) {
-          // get min available imageFrontData.Alpha
-          let imgFront_pixel_alpha = 0;
-          for (let color_channel = 0; color_channel < 3; color_channel++) {
-            let tmp;
-            if (
-              imageInData.getChannelOfPixel(i, j, color_channel) >
-              backgroundColor[color_channel]
-            ) {
-              tmp =
-                imageInData.getChannelOfPixel(i, j, color_channel) -
-                backgroundColor[color_channel];
-              if (tmp != 0) {
-                // when encounter 0 / 0, to get min available Alpha, assume tmp is 0
-                tmp /= 255 - backgroundColor[color_channel];
-              }
-            } else {
-              tmp =
-                backgroundColor[color_channel] -
-                imageInData.getChannelOfPixel(i, j, color_channel);
-              if (tmp != 0) {
-                tmp /= backgroundColor[color_channel];
-              }
-            }
-            if (tmp > imgFront_pixel_alpha) {
-              imgFront_pixel_alpha = tmp;
-            }
-          }
-
-          imageFrontData.setChannelOfPixel(i, j, 3, imgFront_pixel_alpha * 255);
-
-          if (imgFront_pixel_alpha == 0) {
-            for (let color_channel = 0; color_channel < 3; color_channel++) {
-              imageFrontData.setChannelOfPixel(i, j, color_channel, 0);
-            }
-            continue;
-          }
-
-          // now imgFront_pixel_alpha is the min available alpha
-          for (let color_channel = 0; color_channel < 3; color_channel++) {
-            if (
-              imageInData.getChannelOfPixel(i, j, color_channel) >
-              backgroundColor[color_channel]
-            ) {
-              let frontPixel =
-                imageInData.getChannelOfPixel(i, j, color_channel) -
-                backgroundColor[color_channel];
-              frontPixel /= imgFront_pixel_alpha;
-              frontPixel += backgroundColor[color_channel];
-
-              imageFrontData.setChannelOfPixel(i, j, color_channel, frontPixel);
-            } else {
-              let frontPixel = backgroundColor[color_channel];
-              let tmp =
-                backgroundColor[color_channel] -
-                imageInData.getChannelOfPixel(i, j, color_channel);
-              tmp /= imgFront_pixel_alpha;
-              frontPixel -= tmp;
-
-              imageFrontData.setChannelOfPixel(i, j, color_channel, frontPixel);
-            }
-          }
+          ImageProcessor.processPixel(imageInData,imageOutData,i,j,backgroundColor);
+          
         }
         this.processStatus[0] = i;
         this.$nextTick();
         console.log(i + "/" + imageInData.height);
       }
-      this.outputCanvas.getContext("2d").putImageData(imageFrontData, 0, 0);
+      this.outputCanvas.getContext("2d").putImageData(imageOutData, 0, 0);
       this.imageOut = this.outputCanvas.toDataURL();
       this.isImageProcessing = false;
       this.isImageProcessed = true;
