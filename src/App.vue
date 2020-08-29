@@ -14,15 +14,25 @@
     <v-main>
       <div class="d-flex flex-column align-center" style="min-height:100%; width:80%; margin:auto">
         <div class="d-flex flex-column justify-center align-center full-width">
-          <canvas
-            v-show="isImageLoaded"
-            class="full-width"
-            id="inputCanvas"
-            @dblclick="pickColor"
-            @mousedown="drawing=true"
-            @mousemove="processImagePart"
-            @mouseup="drawing=false"
-          ></canvas>
+          <div class="full-width" style="position: relative;" :style="{height:imageHeight}">
+            <!-- 输入图片，位于下方图层，不应修改此图片 -->
+            <canvas
+              v-show="isImageLoaded"
+              class="full-width"
+              style="position: absolute; left: 0; top: 0; z-index: 0;"
+              id="inputCanvas"
+            ></canvas>
+            <!-- 标记路径，使用标记方式指定区域进行加工时，标记显示在本图层，位于上方图层 -->
+            <canvas
+              v-show="isImageLoaded"
+              class="full-width"
+              style="position: absolute; left: 0; top: 0; z-index: 1;"
+              id="markCanvas"
+              @dblclick="pickColor"
+              @click="addWayPoint"
+              @contextmenu="popWayPoint"
+            ></canvas>
+          </div>
           <p
             v-show="isImageLoaded"
             class="text-center text-h6"
@@ -30,10 +40,10 @@
           >{{colorHint}}</p>
           <v-btn v-show="isImageLoaded" @click="processImageAsync">开始加工</v-btn>
 
-          <p v-show="isImageLoaded" class="text-center">加工过程预计需要大约{{estimatedTime}}秒</p>
+          <p v-if="isImageLoaded" class="text-center">加工过程预计需要大约{{estimatedTime}}秒</p>
 
           <v-dialog
-            v-show="isImageLoaded"
+            v-if="isImageLoaded"
             v-model="isImageProcessing"
             hide-overlay
             persistent
@@ -108,41 +118,38 @@
 </template>
 
 <script>
-import ImageProcessor from "./util/ImageProcessor"
-
+import ImageProcessor from "./util/ImageProcessor";
+import SmoothLineMarker from "./util/smoothLineMarker";
+/* TODO 使用套索（比和路径）对部分内容进行处理
+- 在输入canvas上覆盖一个路径canvas用于展示绘制的路径，
+- 使canvas可以缩放与拖动
+- 绘制闭合路径，并在路径闭合后对路径内的像素进行处理。
+- 保留一键对整图进行处理的功能。
+- 参考
+  - 缩放拖动 https://juejin.im/post/6844904095904432135
+  - 平滑路径 https://wow.techbrood.com/fiddle/11802
+  - API https://developer.mozilla.org/zh-CN/docs/Web/API/CanvasRenderingContext2D/isPointInPath
+*/
 export default {
   name: "App",
   data: () => ({
-    /**
-     * 待处理图片是否已加载
-     */
+    /**待处理图片是否已加载 */
     isImageLoaded: false,
-    /**
-     * 待处理图片是否正在处理
-     */
+    /**待处理图片是否正在处理 */
     isImageProcessing: false,
-    /**
-     * 待处理图片是否已处理完成
-     */
+    /**待处理图片是否已处理完成 */
     isImageProcessed: false,
-    /**
-     * 待处理图片
-     */
+    /**待处理图片 */
     imageIn: null,
-    /**
-     * 处理后图片
-     */
+    /**处理后图片 */
     imageOut: null,
 
-    /**
-     * 选中的参考颜色
-     */
+    /**选中的参考颜色 */
     colorRGB: { r: 122, g: 122, b: 122 },
-    drawing:false,
+    estimatedTime:0,
 
-    processStatus: [0, 100],
     useDarkTheme: false,
-    estimatedTime: 0,
+
     advanceChangeBackground: false,
     backgroundModeOptions: ["选择纯色", "内置背景图片", "本机背景图片"],
     selectedBackgroundMode: "选择纯色",
@@ -150,20 +157,32 @@ export default {
     selectedBackgroundImage: "assets/logo.png",
     buildInBackgroundImagesPaths: { logo: "assets/logo.png" },
     selectedBuildInBackgroundImage: "assets/logo.png",
+
+    imageHeight: "200px",
+
+    /**输入画布 */
+    inputCanvas: null,
+    /**标记画布 */
+    markCanvas: null,
+    /**输出画布 */
+    outputCanvas: null,
+
+    /**标记器 */
+    marker: null,
   }),
-  mounted() {},
+  mounted() {
+    this.inputCanvas = document.getElementById("inputCanvas");
+    this.outputCanvas = document.getElementById("outputCanvas");
+    this.markCanvas = document.getElementById("markCanvas");
+    this.marker = new SmoothLineMarker(this.markCanvas);
+  },
   watch: {},
   computed: {
-    inputCanvas() {
-      return document.getElementById("inputCanvas");
-    },
-    outputCanvas() {
-      return document.getElementById("outputCanvas");
-    },
-
+    /**返回当前选中的颜色格式化的结果 */
     colorHint() {
       return this.formatColor(this.colorRGB);
     },
+    /**使用非默认主题时返回相应的输出画布背景 */
     advanceBackground() {
       if (!this.advanceChangeBackground) {
         return {};
@@ -189,19 +208,23 @@ export default {
       }
       return {};
     },
+
   },
   methods: {
+    /**选取本机图片作为输入 */
     selectImage(file) {
       let reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = (e) => {
         let image = e.target.result;
 
-        this.drawImageOnCanvas(this.inputCanvas, image);
+        this.importImageToInputCanvas(image);
+
         this.imageIn = image;
         this.isImageLoaded = true;
       };
     },
+    /**选取本机图片作为输出图片的背景 */
     selectBackgroundImage(file) {
       let reader = new FileReader();
       reader.readAsDataURL(file);
@@ -209,20 +232,31 @@ export default {
         this.selectedBackgroundImage = e.target.result;
       };
     },
-    drawImageOnCanvas(canvas, imageDataUrl) {
-      let ctx = canvas.getContext("2d");
+    /**将图像绘制在指定canvas上，设置canvas尺寸，设置包裹canvas的父元素div的高度，估计 */
+    importImageToInputCanvas(imageDataUrl) {
+      let inputCanvas = this.inputCanvas;
+      let markCanvas = this.markCanvas;
+      let ctx = inputCanvas.getContext("2d");
       let img = new Image();
       img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
+        inputCanvas.width = img.width;
+        inputCanvas.height = img.height;
+        markCanvas.width = img.width;
+        markCanvas.height = img.height;
+
+        this.marker.removeAllPoints();
+        
         ctx.drawImage(img, 0, 0);
-        this.estimateTime(img.width, img.height);
+        this.imageHeight = inputCanvas.offsetHeight + "px";
+        this.estimateTime();
       };
       img.src = imageDataUrl;
     },
-    estimateTime(width, height) {
-      this.estimatedTime = (width * height * 7) / 9068000;
+    estimateTime() {
+      this.estimatedTime =
+        (this.inputCanvas.width * this.inputCanvas.height * 7) / 9068000;
     },
+    /**选取颜色作为透明区域参考色 */
     pickColor(e) {
       let x =
         (e.layerX * this.inputCanvas.width) / this.inputCanvas.offsetWidth;
@@ -237,6 +271,7 @@ export default {
         b: raw_colorRGB[2],
       };
     },
+    /**格式化颜色，用于显示被选取的透明区域参考色，以及被选取的背景色 */
     formatColor(raw_color) {
       return (
         "#" +
@@ -245,37 +280,44 @@ export default {
           .substr(1)
       );
     },
+    /**切换主题 */
     changeBackground() {
       this.advanceChangeBackground = false;
       this.useDarkTheme = !this.useDarkTheme;
       this.$vuetify.theme.isDark = this.useDarkTheme;
     },
+    /**切换使用高级背景 */
     toggleAdvanceChangeBackground() {
       this.advanceChangeBackground = !this.advanceChangeBackground;
     },
+    /**添加处理区域标记点 */
+    addWayPoint(e) {
+      let x =
+        (e.layerX * this.inputCanvas.width) / this.inputCanvas.offsetWidth;
+      let y =
+        (e.layerY * this.inputCanvas.height) / this.inputCanvas.offsetHeight;
+      console.log("add point(" + x + "," + y + ")");
+      this.marker.addPoint(x, y);
+    },
+    /**弹出最后添加的处理区域标记点 */
+    popWayPoint() {
+      console.log("pop point");
+      this.marker.popPoint();
+    },
+    /**异步处理 */
     processImageAsync() {
       setTimeout(() => {
-        this.processImage();
+        if (this.marker.isMarked()) {
+          this.processMarkedImage();
+        } else {
+          this.processWholeImage();
+        }
       }, 100);
       this.isImageProcessing = true;
       this.$nextTick();
       console.log("async");
     },
-    processImagePart(e) {
-      if(!this.drawing){
-        return;
-      }
-      let x =
-        (e.layerX * this.inputCanvas.width) / this.inputCanvas.offsetWidth;
-      let y =
-        (e.layerY * this.inputCanvas.height) / this.inputCanvas.offsetHeight;
-        console.log("draw("+x+","+y+")");
-        return x+y;
-    },
-    processImage() {
-      this.processStatus = [0, this.inputCanvas.height];
-      this.$nextTick();
-
+    processWholeImage() {
       this.outputCanvas.width = this.inputCanvas.width;
       this.outputCanvas.height = this.inputCanvas.height;
 
@@ -291,11 +333,52 @@ export default {
 
       for (let i = 0; i < imageInData.height; i++) {
         for (let j = 0; j < imageInData.width; j++) {
-          ImageProcessor.processPixel(imageInData,imageOutData,i,j,backgroundColor);
-          
+          ImageProcessor.processPixel(
+            imageInData,
+            imageOutData,
+            i,
+            j,
+            backgroundColor
+          );
         }
-        this.processStatus[0] = i;
-        this.$nextTick();
+        console.log(i + "/" + imageInData.height);
+      }
+      this.outputCanvas.getContext("2d").putImageData(imageOutData, 0, 0);
+      this.imageOut = this.outputCanvas.toDataURL();
+      this.isImageProcessing = false;
+      this.isImageProcessed = true;
+    },
+
+    processMarkedImage() {
+      this.outputCanvas.width = this.inputCanvas.width;
+      this.outputCanvas.height = this.inputCanvas.height;
+
+      let imageInData = this.inputCanvas
+        .getContext("2d")
+        .getImageData(0, 0, this.inputCanvas.width, this.inputCanvas.height);
+      let imageOutData = this.outputCanvas
+        .getContext("2d")
+        .getImageData(0, 0, this.outputCanvas.width, this.outputCanvas.height);
+      let backgroundColor = [this.colorRGB.r, this.colorRGB.g, this.colorRGB.b];
+
+      console.log(imageOutData.width + " " + imageOutData.height);
+
+      for (let i = 0; i < imageInData.height; i++) {
+        for (let j = 0; j < imageInData.width; j++) {
+          // 坐标的x是列序号，y是行序号，因此这里需要倒过来
+          if (this.marker.isPointInPath(j,i)) {
+            ImageProcessor.processPixel(
+              imageInData,
+              imageOutData,
+              i,
+              j,
+              backgroundColor
+            );
+            console.log(i+","+j)
+          } else {
+            ImageProcessor.copyPixel(imageInData, imageOutData,i,j);
+          }
+        }
         console.log(i + "/" + imageInData.height);
       }
       this.outputCanvas.getContext("2d").putImageData(imageOutData, 0, 0);
@@ -314,7 +397,4 @@ export default {
 .margin-auto {
   margin: auto;
 }
-/* .dark{
-  background: ;
-} */
 </style>

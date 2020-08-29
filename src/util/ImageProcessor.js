@@ -6,7 +6,13 @@ ImageData.prototype.setChannelOfPixel = function (row, col, channel, value) {
 };
 
 export default {
-    processPixel(imageInData,imageOutData, row, col, referenceColr) {
+    copyPixel(imageInData, imageOutData, row, col) {
+        for (let color_channel = 0; color_channel < 4; color_channel++) {
+            let originPixel = imageInData.getChannelOfPixel(row, col, color_channel);
+            imageOutData.setChannelOfPixel(row, col, color_channel, originPixel);
+        }
+    },
+    processPixel(imageInData, imageOutData, row, col, referenceColr) {
         // get min available imageOutData.Alpha
         let imgFront_pixel_alpha = 0;
         for (let color_channel = 0; color_channel < 3; color_channel++) {
