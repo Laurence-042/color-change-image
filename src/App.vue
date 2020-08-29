@@ -28,16 +28,19 @@
               class="full-width"
               style="position: absolute; left: 0; top: 0; z-index: 1;"
               id="markCanvas"
-              @dblclick="pickColor"
-              @click="addWayPoint"
+              @click="colorSelected?addWayPoint($event):pickColor($event)"
               @contextmenu="popWayPoint"
             ></canvas>
           </div>
+
           <p
-            v-show="isImageLoaded"
+            v-if="colorSelected"
             class="text-center text-h6"
             :style="{background:colorHint}"
-          >{{colorHint}}</p>
+            @click="colorSelected=false"
+          >已选择{{colorHint}}，现在处于标记模式，点击此处以重新选择颜色，重新选择颜色不会清空现有标记</p>
+          <p v-else class="text-center text-h6">请先在图中点击选择参考色</p>
+
           <v-btn v-show="isImageLoaded" @click="processImageAsync">开始加工</v-btn>
 
           <p v-if="isImageLoaded" class="text-center">加工过程预计需要大约{{estimatedTime}}秒</p>
@@ -146,7 +149,8 @@ export default {
 
     /**选中的参考颜色 */
     colorRGB: { r: 122, g: 122, b: 122 },
-    estimatedTime:0,
+    colorSelected:false,
+    estimatedTime: 0,
 
     useDarkTheme: false,
 
@@ -208,7 +212,6 @@ export default {
       }
       return {};
     },
-
   },
   methods: {
     /**选取本机图片作为输入 */
@@ -245,7 +248,7 @@ export default {
         markCanvas.height = img.height;
 
         this.marker.removeAllPoints();
-        
+
         ctx.drawImage(img, 0, 0);
         this.imageHeight = inputCanvas.offsetHeight + "px";
         this.estimateTime();
@@ -270,6 +273,7 @@ export default {
         g: raw_colorRGB[1],
         b: raw_colorRGB[2],
       };
+      this.colorSelected=true;
     },
     /**格式化颜色，用于显示被选取的透明区域参考色，以及被选取的背景色 */
     formatColor(raw_color) {
@@ -366,7 +370,7 @@ export default {
       for (let i = 0; i < imageInData.height; i++) {
         for (let j = 0; j < imageInData.width; j++) {
           // 坐标的x是列序号，y是行序号，因此这里需要倒过来
-          if (this.marker.isPointInPath(j,i)) {
+          if (this.marker.isPointInPath(j, i)) {
             ImageProcessor.processPixel(
               imageInData,
               imageOutData,
@@ -374,9 +378,8 @@ export default {
               j,
               backgroundColor
             );
-            console.log(i+","+j)
           } else {
-            ImageProcessor.copyPixel(imageInData, imageOutData,i,j);
+            ImageProcessor.copyPixel(imageInData, imageOutData, i, j);
           }
         }
         console.log(i + "/" + imageInData.height);
