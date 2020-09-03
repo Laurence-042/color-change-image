@@ -20,9 +20,6 @@ export default class {
         let points = this.points;
 
         this.clearCanvas();
-        if (points.length == 0) {
-            return;
-        }
 
         // 标记点
         if (this.displayPoints) {
@@ -43,6 +40,9 @@ export default class {
             }
         }
 
+        if (points.length < 1) {
+            return;
+        }
         // 依次途径标记点的引导线（折线）
         if (this.displayGuideLines) {
 
@@ -54,35 +54,41 @@ export default class {
 
             for (let i = 1; i < points.length; ++i)
                 this.ctx.lineTo(points[i].x, points[i].y);
+            this.ctx.closePath();
 
             this.ctx.stroke();
         }
 
+        if (points.length < 2) {
+            return;
+        }
         // 平滑曲线
         this.ctx.lineWidth = 3;
         this.ctx.strokeStyle = '#eee';
-        let x = points[0].x,
-            y = points[0].y;
+        let xControl = points[1].x,
+            yControl = points[1].y;
 
+        // 连接第一个点与前两个点的中点，并将中点作为曲线的起点
         this.ctx.beginPath();
-        this.ctx.moveTo(x, y);
+        this.ctx.moveTo(points[0].x , points[0].y);
+        this.ctx.lineTo((points[0].x + points[1].x) / 2, (points[0].y + points[1].y) / 2);
 
-        for (let i = 0; i < points.length; ++i) {
+        // 总是以前一个点为控制点，以当前点与控制点的中间为终点
+        for (let i = 2; i < points.length; ++i) {
+            let x = points[i].x,
+                y = points[i].y,
 
-            let x2 = points[i].x,
-                y2 = points[i].y,
+                xTarget = (xControl + x) / 2,
+                yTarget = (yControl + y) / 2;
 
-                mx = (x + x2) / 2,
-                my = (y + y2) / 2;
+            this.ctx.quadraticCurveTo(xControl, yControl, xTarget, yTarget);
 
-            this.ctx.quadraticCurveTo(x, y, mx, my);
-
-            x = x2;
-            y = y2;
+            xControl = x;
+            yControl = y;
 
         }
 
-        this.ctx.lineTo(x, y);
+        this.ctx.lineTo(xControl,yControl);
         this.ctx.closePath();
 
         this.ctx.stroke();
@@ -93,7 +99,7 @@ export default class {
     }
 
     removeAllPoints() {
-        this.points.length=0;
+        this.points.length = 0;
         this.clearCanvas();
         this.rePaint();
     }

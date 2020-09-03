@@ -12,25 +12,34 @@
     </v-app-bar>
 
     <v-main>
+      <!-- 主布局 -->
       <div class="d-flex flex-column align-center" style="min-height:100%; width:80%; margin:auto">
+        <!-- 输入区 -->
         <div class="d-flex flex-column justify-center align-center full-width">
-          <div class="full-width" style="position: relative;" :style="{height:imageHeight}">
-            <!-- 输入图片，位于下方图层，不应修改此图片 -->
-            <canvas
-              v-show="isImageLoaded"
-              class="full-width"
-              style="position: absolute; left: 0; top: 0; z-index: 0;"
-              id="inputCanvas"
-            ></canvas>
-            <!-- 标记路径，使用标记方式指定区域进行加工时，标记显示在本图层，位于上方图层 -->
-            <canvas
-              v-show="isImageLoaded"
-              class="full-width"
-              style="position: absolute; left: 0; top: 0; z-index: 1;"
-              id="markCanvas"
-              @click="colorSelected?addWayPoint($event):pickColor($event)"
-              @contextmenu="popWayPoint"
-            ></canvas>
+          <!-- 输入图层组遮罩 -->
+          <div class="full-width canvas-group-wrapper" :style="{height:imageHeight}">
+            <!-- 输入图层组 -->
+            <div style="transform-origin: 0 0;" :style="inputCanvasGroupTransformStyle">
+              <!-- 输入图片，位于下方图层，不应修改此图片 -->
+              <canvas
+                v-show="isImageLoaded"
+                class="full-width"
+                style="position: absolute; left: 0; top: 0; z-index: 0;"
+                id="inputCanvas"
+              ></canvas>
+              <!-- 标记路径，使用标记方式指定区域进行加工时，标记显示在本图层，位于上方图层 -->
+              <canvas
+                v-show="isImageLoaded"
+                class="full-width"
+                style="position: absolute; left: 0; top: 0; z-index: 1;"
+                id="markCanvas"
+                @mousedown="inputCanvasGroupMouseDownHandler"
+                @mouseup="inputCanvasGroupMouseUpHandler"
+                @mousemove="inputCanvasGroupMouseMoveHandler"
+                @mousewheel.prevent="inputCanvasGroupMouseWheelHandler"
+                @contextmenu.prevent
+              ></canvas>
+            </div>
           </div>
 
           <p
@@ -60,6 +69,8 @@
             </v-card>
           </v-dialog>
         </div>
+
+        <!-- 操作提示 -->
         <div v-show="!isImageLoaded">
           <p class="text-center text-h6">请先在顶栏处选取图片</p>
           <p class="text-center">使用方法：</p>
@@ -72,8 +83,10 @@
           </ol>
         </div>
 
+        <!-- 简单背景调整 -->
         <v-btn @click="changeBackground">切换亮色/暗色主题</v-btn>
         <v-btn @click="toggleAdvanceChangeBackground">自定义背景</v-btn>
+        <!-- 高级背景调整 -->
         <div v-show="advanceChangeBackground" class="d-flex flex-column align-center">
           <select v-show="advanceChangeBackground" v-model="selectedBackgroundMode">
             <option
@@ -107,6 +120,7 @@
           </select>
         </div>
 
+        <!-- 输出图片 -->
         <canvas v-show="false" class="full-width" id="outputCanvas"></canvas>
         <img
           v-show="isImageProcessed"
@@ -149,7 +163,7 @@ export default {
 
     /**选中的参考颜色 */
     colorRGB: { r: 122, g: 122, b: 122 },
-    colorSelected:false,
+    colorSelected: false,
     estimatedTime: 0,
 
     useDarkTheme: false,
@@ -173,6 +187,21 @@ export default {
 
     /**标记器 */
     marker: null,
+
+    /**缩放比例 */
+    scaleFactor: 1,
+    /**X轴平移 */
+    translateX: 0,
+    /**Y轴平移 */
+    translateY: 0,
+    /**拖动辅助数据，存储拖动状态 */
+    dragHelper: {
+      lastX: 0,
+      lastY: 0,
+      mousedown: false,
+      mouseButton: 0,
+      mousedownTime: new Date(),
+    },
   }),
   mounted() {
     this.inputCanvas = document.getElementById("inputCanvas");
@@ -211,6 +240,18 @@ export default {
           };
       }
       return {};
+    },
+    inputCanvasGroupTransformStyle() {
+      return {
+        transform:
+          "translate(" +
+          this.translateX +
+          "px," +
+          this.translateY +
+          "px) scale(" +
+          this.scaleFactor +
+          ")",
+      };
     },
   },
   methods: {
@@ -259,12 +300,110 @@ export default {
       this.estimatedTime =
         (this.inputCanvas.width * this.inputCanvas.height * 7) / 9068000;
     },
+    getRealPosition(offsetX, offsetY) {
+      let realX =
+        (offsetX * this.inputCanvas.width) / this.inputCanvas.offsetWidth;
+      let realY =
+        (offsetY * this.inputCanvas.height) / this.inputCanvas.offsetHeight;
+      // console.log({ x: offsetX, y: offsetY });
+      // console.log({ realX: realX, realY: realY });
+      // console.log({
+      //   offsetWidth: this.inputCanvas.offsetWidth,
+      //   offsetWidthHeight: this.inputCanvas.offsetHeight,
+      // });
+      // console.log({
+      //   width: this.inputCanvas.width,
+      //   height: this.inputCanvas.height,
+      // });
+      return { x: realX, y: realY };
+    },
+    /**处理输入图层组的MouseDown事件 */
+    inputCanvasGroupMouseDownHandler(e) {
+      this.dragHelper.lastX = e.offsetX;
+      this.dragHelper.lastY = e.offsetY;
+      this.dragHelper.mousedown = true;
+      this.dragHelper.mouseButton = e.button;
+      this.dragHelper.mousedownTime = new Date();
+    },
+    /**处理输入图层组的MouseUp事件 */
+    inputCanvasGroupMouseUpHandler(e) {
+      if (
+        new Date() - this.dragHelper.mousedownTime < 100 &&
+        this.dragHelper.mouseButton == e.button
+      ) {
+        // left click
+        if (this.dragHelper.mouseButton == 0) {
+          this.colorSelected ? this.addWayPoint(e) : this.pickColor(e);
+        }
+        // right click
+        if (this.dragHelper.mouseButton == 2) {
+          this.popWayPoint();
+        }
+      }
+
+      this.dragHelper.mousedown = false;
+    },
+    /**处理输入图层组的MouseMove事件 */
+    inputCanvasGroupMouseMoveHandler(e) {
+      if (!this.dragHelper.mousedown) {
+        return;
+      }
+      this.moveInputCanvasGroup(
+        e.offsetX - this.dragHelper.lastX,
+        e.offsetY - this.dragHelper.lastY
+      );
+    },
+    inputCanvasGroupMouseWheelHandler(e) {
+      if (e.deltaY < 0) {
+        this.scaleInputCanvasGroup(1.1, e.offsetX, e.offsetY);
+      } else {
+        this.scaleInputCanvasGroup(0.9, e.offsetX, e.offsetY);
+      }
+    },
+    scaleInputCanvasGroup(deltaFactor, offsetX, offsetY) {
+      if (this.scaleFactor * deltaFactor < 0.101) {
+        return;
+      }
+
+      let oldFactor = this.scaleFactor
+      this.scaleFactor *= deltaFactor;
+
+      this.translateX += offsetX * (oldFactor-this.scaleFactor);
+      this.translateY += offsetY * (oldFactor-this.scaleFactor);
+
+      
+    },
+    moveInputCanvasGroup(deltaX, deltaY) {
+      if (
+        Math.abs(this.translateX + deltaX) /
+          (this.inputCanvas.offsetWidth * this.scaleFactor) <
+        0.9
+      ) {
+        this.translateX += deltaX;
+      }
+
+      if (
+        Math.abs(this.translateY + deltaY) /
+          (this.inputCanvas.offsetHeight * this.scaleFactor) <
+        0.9
+      ) {
+        this.translateY += deltaY;
+      }
+    },
     /**选取颜色作为透明区域参考色 */
     pickColor(e) {
-      let x =
-        (e.layerX * this.inputCanvas.width) / this.inputCanvas.offsetWidth;
-      let y =
-        (e.layerY * this.inputCanvas.height) / this.inputCanvas.offsetHeight;
+      let { x, y } = this.getRealPosition(e.offsetX, e.offsetY);
+      console.log(
+        "pick color(" +
+          x +
+          "," +
+          y +
+          ") from (" +
+          this.inputCanvas.width +
+          "," +
+          this.inputCanvas.height +
+          ")"
+      );
       let raw_colorRGB = this.inputCanvas
         .getContext("2d")
         .getImageData(x, y, 1, 1).data;
@@ -273,7 +412,7 @@ export default {
         g: raw_colorRGB[1],
         b: raw_colorRGB[2],
       };
-      this.colorSelected=true;
+      this.colorSelected = true;
     },
     /**格式化颜色，用于显示被选取的透明区域参考色，以及被选取的背景色 */
     formatColor(raw_color) {
@@ -296,10 +435,7 @@ export default {
     },
     /**添加处理区域标记点 */
     addWayPoint(e) {
-      let x =
-        (e.layerX * this.inputCanvas.width) / this.inputCanvas.offsetWidth;
-      let y =
-        (e.layerY * this.inputCanvas.height) / this.inputCanvas.offsetHeight;
+      let { x, y } = this.getRealPosition(e.offsetX, e.offsetY);
       console.log("add point(" + x + "," + y + ")");
       this.marker.addPoint(x, y);
     },
@@ -399,5 +535,9 @@ export default {
 }
 .margin-auto {
   margin: auto;
+}
+.canvas-group-wrapper {
+  position: relative;
+  overflow: hidden;
 }
 </style>
