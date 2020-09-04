@@ -1,136 +1,162 @@
 <template>
   <v-app>
-    <v-app-bar app color="primary" dark>
+    <v-navigation-drawer v-model="drawer" app>
+      <v-list nav>
+        <!-- 切换主题（简单背景调整） -->
+        <v-list-item @click="changeBackground">切换亮色/暗色主题</v-list-item>
+
+        <!-- 高级背景调整 -->
+        <v-list-item @click="toggleAdvanceChangeBackground">自定义背景</v-list-item>
+        <v-list-item>
+          <div v-show="advanceChangeBackground" class="d-flex flex-column align-center full-width">
+            <v-select
+              v-show="advanceChangeBackground"
+              v-model="selectedBackgroundMode"
+              :items="backgroundModeOptions"
+              single-line
+              class="full-width"
+            ></v-select>
+
+            <v-color-picker
+              v-show="advanceChangeBackground&&selectedBackgroundMode=='选择纯色'"
+              v-model="pickedBackgroundColor"
+              class="margin-auto full-width"
+            ></v-color-picker>
+            <v-file-input
+              v-show="advanceChangeBackground&&selectedBackgroundMode=='本机背景图片'"
+              accept="image/*"
+              label="选择背景图片图片"
+              @change="selectBackgroundImage"
+              class="full-width"
+            ></v-file-input>
+            <v-select
+              v-show="advanceChangeBackground&&selectedBackgroundMode=='内置背景图片'"
+              v-model="selectedBuildInBackgroundImage"
+              :items="buildInBackgroundImagesPaths"
+              :default="buildInBackgroundImagesPaths[0]"
+              item-text="name"
+              item-value="path"
+              single-line
+              class="full-width"
+            ></v-select>
+          </div>
+        </v-list-item>
+      </v-list>
+    </v-navigation-drawer>
+
+    <v-app-bar app color="blue darken-3" dark>
+      <v-app-bar-nav-icon @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
+
       <v-file-input class="full-width" accept="image/*" label="选择待加工图片" @change="selectImage"></v-file-input>
 
       <v-spacer></v-spacer>
 
       <v-btn href="https://github.com/Laurence-042/color-change-image" target="_blank" text>
-        <span>View it on github</span>
+        <span>在Github查看代码</span>
         <v-icon>mdi-open-in-new</v-icon>
       </v-btn>
     </v-app-bar>
-
     <v-main>
-      <!-- 主布局 -->
-      <div class="d-flex flex-column align-center" style="min-height:100%; width:80%; margin:auto">
-        <!-- 输入区 -->
-        <div class="d-flex flex-column justify-center align-center full-width">
-          <!-- 输入图层组遮罩 -->
-          <div class="full-width canvas-group-wrapper" :style="{height:imageHeight}">
-            <!-- 输入图层组 -->
-            <div style="transform-origin: 0 0;" :style="inputCanvasGroupTransformStyle">
-              <!-- 输入图片，位于下方图层，不应修改此图片 -->
-              <canvas
-                v-show="isImageLoaded"
-                class="full-width"
-                style="position: absolute; left: 0; top: 0; z-index: 0;"
-                id="inputCanvas"
-              ></canvas>
-              <!-- 标记路径，使用标记方式指定区域进行加工时，标记显示在本图层，位于上方图层 -->
-              <canvas
-                v-show="isImageLoaded"
-                class="full-width"
-                style="position: absolute; left: 0; top: 0; z-index: 1;"
-                id="markCanvas"
-                @mousedown="inputCanvasGroupMouseDownHandler"
-                @mouseup="inputCanvasGroupMouseUpHandler"
-                @mousemove="inputCanvasGroupMouseMoveHandler"
-                @mouseleave="inputCanvasGroupMouseLeaveHandler"
-                @mousewheel.prevent="inputCanvasGroupMouseWheelHandler"
-                @contextmenu.prevent
-              ></canvas>
-            </div>
+      <v-container class="fill-height" fluid>
+        <v-row align="center" justify="center">
+          <!-- 操作提示 -->
+          <div v-show="!isImageLoaded">
+            <p class="text-center text-h6">请先在顶栏处选取图片</p>
+            <p class="text-center">使用方法：</p>
+            <ol>
+              <li>点击顶栏上传图片</li>
+              <li>通过点击在图片中选中将要成为变色图变色部分的颜色</li>
+              <li>点“开始加工”按钮</li>
+              <li>耐心等待加工完成，然后使用切换主题或者自定义背景色按钮来调整背景颜色预览变色图效果</li>
+              <li>提示：替换对比度较低且不过亮过暗的颜色效果会比较好</li>
+            </ol>
           </div>
 
-          <p
-            v-if="colorSelected"
-            class="text-center text-h6"
-            :style="{background:colorHint}"
-            @click="colorSelected=false"
-          >已选择{{colorHint}}，现在处于标记模式，点击此处以重新选择颜色，重新选择颜色不会清空现有标记</p>
-          <p v-else class="text-center text-h6">请先在图中点击选择参考色</p>
-
-          <v-btn v-show="isImageLoaded" @click="processImageAsync">开始加工</v-btn>
-
-          <p v-if="isImageLoaded" class="text-center">加工过程预计需要大约{{estimatedTime}}秒</p>
-
-          <v-dialog
-            v-if="isImageLoaded"
-            v-model="isImageProcessing"
-            hide-overlay
-            persistent
-            width="300"
+          <!-- 输入区 -->
+          <div
+            class="d-flex flex-column justify-center align-center full-width"
+            :style="isImageLoaded?{}:{display:'none !important'}"
           >
-            <v-card color="primary" dark>
-              <v-card-text>
-                <p>请稍等大约{{estimatedTime}}秒</p>
-                <v-progress-linear indeterminate color="white" class="mb-0"></v-progress-linear>
-              </v-card-text>
+            <!-- 输入图层组遮罩 -->
+            <div
+              v-show="!isImageProcessed"
+              class="full-width canvas-group-wrapper center-background"
+              :style="[{height:imageHeight},advanceBackground]"
+            >
+              <!-- 输入图层组 -->
+              <div style="transform-origin: 0 0;" :style="inputCanvasGroupTransformStyle">
+                <!-- 输入图片，位于下方图层，不应修改此图片 -->
+                <canvas
+                  class="full-width"
+                  style="position: absolute; left: 0; top: 0; z-index: 0;"
+                  id="inputCanvas"
+                ></canvas>
+                <!-- 标记路径，使用标记方式指定区域进行加工时，标记显示在本图层，位于上方图层 -->
+                <canvas
+                  class="full-width"
+                  style="position: absolute; left: 0; top: 0; z-index: 1;"
+                  id="markCanvas"
+                  @mousedown="inputCanvasGroupMouseDownHandler"
+                  @mouseup="inputCanvasGroupMouseUpHandler"
+                  @mousemove="inputCanvasGroupMouseMoveHandler"
+                  @mouseleave="inputCanvasGroupMouseLeaveHandler"
+                  @mousewheel.prevent="inputCanvasGroupMouseWheelHandler"
+                  @contextmenu.prevent
+                ></canvas>
+              </div>
+            </div>
+
+            <img
+              v-show="isImageProcessed"
+              :src="imageOut"
+              :style="[advanceBackground]"
+              class="full-width center-background"
+            />
+
+            <v-card v-if="!isImageProcessed" class="fixed-right-bottom" dark>
+              <v-card-title
+                v-if="colorSelected"
+                :style="{background:colorHint}"
+                @click="colorSelected=false"
+              >已选择{{colorHint}}，点击此处以重新选色</v-card-title>
+              <v-card-title v-else>请先在图中点击选择参考色</v-card-title>
+              <v-card-text>加工过程预计需要大约{{estimatedTime}}秒</v-card-text>
+
+              <v-card-actions>
+                <v-btn @click="processImageAsync">开始加工</v-btn>
+              </v-card-actions>
+
+              <v-dialog v-model="isImageProcessing" hide-overlay persistent width="300">
+                <v-card color="primary" dark>
+                  <v-card-text>
+                    <p>请稍等大约{{estimatedTime}}秒</p>
+                    <v-progress-linear indeterminate color="white" class="mb-0"></v-progress-linear>
+                  </v-card-text>
+                </v-card>
+              </v-dialog>
             </v-card>
-          </v-dialog>
-        </div>
 
-        <!-- 操作提示 -->
-        <div v-show="!isImageLoaded">
-          <p class="text-center text-h6">请先在顶栏处选取图片</p>
-          <p class="text-center">使用方法：</p>
-          <ol>
-            <li>点击顶栏上传图片</li>
-            <li>通过点击在图片中选中将要成为变色图变色部分的颜色</li>
-            <li>点“开始加工”按钮</li>
-            <li>耐心等待加工完成，然后使用切换主题或者自定义背景色按钮来调整背景颜色预览变色图效果</li>
-            <li>提示：替换对比度较低且不过亮过暗的颜色效果会比较好</li>
-          </ol>
-        </div>
+            <v-card v-else class="fixed-right-bottom" dark>
+              <v-card-title>加工完成，标记模式已退出</v-card-title>
+              <v-card-text>使用右键点击图片另存为，<br/>或者点击下方按钮撤销加工重新进入标记模式</v-card-text>
 
-        <!-- 简单背景调整 -->
-        <v-btn @click="changeBackground">切换亮色/暗色主题</v-btn>
-        <v-btn @click="toggleAdvanceChangeBackground">自定义背景</v-btn>
-        <!-- 高级背景调整 -->
-        <div v-show="advanceChangeBackground" class="d-flex flex-column align-center full-width">
-          <v-select
-            v-show="advanceChangeBackground"
-            v-model="selectedBackgroundMode"
-            :items="backgroundModeOptions"
-            single-line
-          ></v-select>
+              <v-card-actions>
+                <v-btn @click="isImageProcessed=false">标记模式</v-btn>
+              </v-card-actions>
+            </v-card>
+          </div>
 
-          <v-color-picker
-            v-show="advanceChangeBackground&&selectedBackgroundMode=='选择纯色'"
-            class="margin-auto"
-            v-model="pickedBackgroundColor"
-          ></v-color-picker>
-          <v-file-input
-            v-show="advanceChangeBackground&&selectedBackgroundMode=='本机背景图片'"
-            accept="image/*"
-            label="选择背景图片图片"
-            @change="selectBackgroundImage"
-          ></v-file-input>
-          <v-select
-            v-show="advanceChangeBackground&&selectedBackgroundMode=='内置背景图片'"
-            v-model="selectedBuildInBackgroundImage"
-            :items="buildInBackgroundImagesPaths"
-            :default="buildInBackgroundImagesPaths[0]"
-            item-text="name"
-            item-value="path"
-            single-line
-          ></v-select>
-        </div>
+          <!-- 输出图片 -->
+          <canvas v-show="false" class="full-width" id="outputCanvas"></canvas>
+        </v-row>
+        <v-footer>
 
-        <!-- 输出图片 -->
-        <canvas v-show="false" class="full-width" id="outputCanvas"></canvas>
-        <img
-          v-show="isImageProcessed"
-          :src="imageOut"
-          :style="advanceBackground"
-          class="full-width"
-          style="background-position-x:center;background-position-y:center;background-size:cover;"
-        />
-      </div>
+        </v-footer>
+      </v-container>
     </v-main>
   </v-app>
 </template>
+
 
 <script>
 import ImageProcessor from "./util/ImageProcessor";
@@ -148,6 +174,9 @@ import SmoothLineMarker from "./util/smoothLineMarker";
 export default {
   name: "App",
   data: () => ({
+    /**导航抽屉 */
+    drawer: null,
+
     /**待处理图片是否已加载 */
     isImageLoaded: false,
     /**待处理图片是否正在处理 */
@@ -178,10 +207,10 @@ export default {
       { name: "黄渐变", path: "黄渐变.jpeg" },
       { name: "绿渐变", path: "绿渐变.jpeg" },
       { name: "晶格", path: "晶格.jpg" },
-      ],
+    ],
     selectedBuildInBackgroundImage: "logo.png",
 
-    imageHeight: "200px",
+    imageHeight: "0px",
 
     /**输入画布 */
     inputCanvas: null,
@@ -388,7 +417,7 @@ export default {
         this.translateX + deltaX <
         this.inputCanvas.offsetWidth -
           this.inputCanvas.offsetWidth * this.scaleFactor * 0.1;
-            // 上侧画面外的部分不能超过当前图片大小的90%
+      // 上侧画面外的部分不能超过当前图片大小的90%
       let inUpBound =
         this.translateY + deltaY >
         -this.inputCanvas.offsetHeight * this.scaleFactor * 0.9;
@@ -398,7 +427,7 @@ export default {
         this.inputCanvas.offsetHeight -
           this.inputCanvas.offsetHeight * this.scaleFactor * 0.1;
 
-      if (inLeftBound && inRightBound&&inUpBound&&inDownBound) {
+      if (inLeftBound && inRightBound && inUpBound && inDownBound) {
         this.translateX += deltaX;
         this.translateY += deltaY;
       }
@@ -552,5 +581,16 @@ export default {
 .canvas-group-wrapper {
   position: relative;
   overflow: hidden;
+  /* background-image: linear-gradient(to bottom, #66ccff, #ee82ee); */
+}
+.center-background{
+    background-position-x: center;
+  background-position-y: center;
+  background-size: cover;
+}
+.fixed-right-bottom {
+  position: fixed !important;
+  bottom: 1em;
+  right: 1em;
 }
 </style>
