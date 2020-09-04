@@ -36,6 +36,7 @@
                 @mousedown="inputCanvasGroupMouseDownHandler"
                 @mouseup="inputCanvasGroupMouseUpHandler"
                 @mousemove="inputCanvasGroupMouseMoveHandler"
+                @mouseleave="inputCanvasGroupMouseLeaveHandler"
                 @mousewheel.prevent="inputCanvasGroupMouseWheelHandler"
                 @contextmenu.prevent
               ></canvas>
@@ -87,14 +88,13 @@
         <v-btn @click="changeBackground">切换亮色/暗色主题</v-btn>
         <v-btn @click="toggleAdvanceChangeBackground">自定义背景</v-btn>
         <!-- 高级背景调整 -->
-        <div v-show="advanceChangeBackground" class="d-flex flex-column align-center">
-          <select v-show="advanceChangeBackground" v-model="selectedBackgroundMode">
-            <option
-              v-for="(backgroundModeOption,index) in backgroundModeOptions"
-              :key="index"
-              :value="backgroundModeOption"
-            >{{backgroundModeOption}}</option>
-          </select>
+        <div v-show="advanceChangeBackground" class="d-flex flex-column align-center full-width">
+          <v-select
+            v-show="advanceChangeBackground"
+            v-model="selectedBackgroundMode"
+            :items="backgroundModeOptions"
+            single-line
+          ></v-select>
 
           <v-color-picker
             v-show="advanceChangeBackground&&selectedBackgroundMode=='选择纯色'"
@@ -107,7 +107,16 @@
             label="选择背景图片图片"
             @change="selectBackgroundImage"
           ></v-file-input>
-          <select
+          <v-select
+            v-show="advanceChangeBackground&&selectedBackgroundMode=='内置背景图片'"
+            v-model="selectedBuildInBackgroundImage"
+            :items="buildInBackgroundImagesPaths"
+            :default="buildInBackgroundImagesPaths[0]"
+            item-text="name"
+            item-value="path"
+            single-line
+          ></v-select>
+          <!-- <select
             v-show="advanceChangeBackground&&selectedBackgroundMode=='内置背景图片'"
             v-model="selectedBuildInBackgroundImage"
           >
@@ -117,7 +126,7 @@
               :key="buildInBackgroundImageName"
               :value="buildInBackgroundImagePath"
             >{{buildInBackgroundImageName}}</option>
-          </select>
+          </select>-->
         </div>
 
         <!-- 输出图片 -->
@@ -173,7 +182,7 @@ export default {
     selectedBackgroundMode: "选择纯色",
     pickedBackgroundColor: { r: 255, g: 255, b: 255 },
     selectedBackgroundImage: "assets/logo.png",
-    buildInBackgroundImagesPaths: { logo: "assets/logo.png" },
+    buildInBackgroundImagesPaths: [{ name: "logo", path: "assets/logo.png" }],
     selectedBuildInBackgroundImage: "assets/logo.png",
 
     imageHeight: "200px",
@@ -266,6 +275,9 @@ export default {
 
         this.imageIn = image;
         this.isImageLoaded = true;
+        this.scaleFactor = 1;
+        this.translateX = 0;
+        this.translateY = 0;
       };
     },
     /**选取本机图片作为输出图片的背景 */
@@ -319,8 +331,8 @@ export default {
     },
     /**处理输入图层组的MouseDown事件 */
     inputCanvasGroupMouseDownHandler(e) {
-      this.dragHelper.lastX = e.offsetX;
-      this.dragHelper.lastY = e.offsetY;
+      this.dragHelper.lastX = e.clientX;
+      this.dragHelper.lastY = e.clientY;
       this.dragHelper.mousedown = true;
       this.dragHelper.mouseButton = e.button;
       this.dragHelper.mousedownTime = new Date();
@@ -348,10 +360,13 @@ export default {
       if (!this.dragHelper.mousedown) {
         return;
       }
+
       this.moveInputCanvasGroup(
-        e.offsetX - this.dragHelper.lastX,
-        e.offsetY - this.dragHelper.lastY
+        e.clientX - this.dragHelper.lastX,
+        e.clientY - this.dragHelper.lastY
       );
+      this.dragHelper.lastX = e.clientX;
+      this.dragHelper.lastY = e.clientY;
     },
     inputCanvasGroupMouseWheelHandler(e) {
       if (e.deltaY < 0) {
@@ -360,33 +375,44 @@ export default {
         this.scaleInputCanvasGroup(0.9, e.offsetX, e.offsetY);
       }
     },
+    inputCanvasGroupMouseLeaveHandler() {
+      this.dragHelper.mousedown = false;
+    },
     scaleInputCanvasGroup(deltaFactor, offsetX, offsetY) {
       if (this.scaleFactor * deltaFactor < 0.101) {
         return;
       }
 
-      let oldFactor = this.scaleFactor
+      let oldFactor = this.scaleFactor;
       this.scaleFactor *= deltaFactor;
 
-      this.translateX += offsetX * (oldFactor-this.scaleFactor);
-      this.translateY += offsetY * (oldFactor-this.scaleFactor);
-
-      
+      this.moveInputCanvasGroup(
+        offsetX * (oldFactor - this.scaleFactor),
+        offsetY * (oldFactor - this.scaleFactor)
+      );
     },
     moveInputCanvasGroup(deltaX, deltaY) {
-      if (
-        Math.abs(this.translateX + deltaX) /
-          (this.inputCanvas.offsetWidth * this.scaleFactor) <
-        0.9
-      ) {
-        this.translateX += deltaX;
-      }
+      // 左侧画面外的部分不能超过当前图片大小的90%
+      let inLeftBound =
+        this.translateX + deltaX >
+        -this.inputCanvas.offsetWidth * this.scaleFactor * 0.9;
+      // 右侧画面外的部分不能超过当前图片大小的90%
+      let inRightBound =
+        this.translateX + deltaX <
+        this.inputCanvas.offsetWidth -
+          this.inputCanvas.offsetWidth * this.scaleFactor * 0.1;
+            // 上侧画面外的部分不能超过当前图片大小的90%
+      let inUpBound =
+        this.translateY + deltaY >
+        -this.inputCanvas.offsetHeight * this.scaleFactor * 0.9;
+      // 下侧画面外的部分不能超过当前图片大小的90%
+      let inDownBound =
+        this.translateY + deltaY <
+        this.inputCanvas.offsetHeight -
+          this.inputCanvas.offsetHeight * this.scaleFactor * 0.1;
 
-      if (
-        Math.abs(this.translateY + deltaY) /
-          (this.inputCanvas.offsetHeight * this.scaleFactor) <
-        0.9
-      ) {
+      if (inLeftBound && inRightBound&&inUpBound&&inDownBound) {
+        this.translateX += deltaX;
         this.translateY += deltaY;
       }
     },
