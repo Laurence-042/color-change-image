@@ -11,7 +11,7 @@ export default class {
         this.ctx = canvas.getContext('2d');
         this.displayGuideLines = true;
         this.displayPoints = true;
-        this.displayPointNumbers = true;
+        this.displayPointNumbers = false;
         this.points = [];
         this.clearCanvas();
     }
@@ -28,13 +28,13 @@ export default class {
             for (let i = 0; i < points.length; ++i) {
 
                 this.ctx.beginPath();
-                this.ctx.arc(points[i].x, points[i].y, 4, 0, Math.PI * 2);
+                this.ctx.arc(points[i].x, points[i].y, 2, 0, Math.PI * 2);
                 this.ctx.fill();
 
                 // 标记点序号
                 if (this.displayPointNumbers) {
 
-                    this.ctx.font = '14px Verdana';
+                    this.ctx.font = '7px Verdana';
                     this.ctx.fillText(i, points[i].x - this.ctx.measureText(i).width / 2, points[i].y + 18);
                 }
             }
@@ -63,7 +63,7 @@ export default class {
             return;
         }
         // 平滑曲线
-        this.ctx.lineWidth = 3;
+        this.ctx.lineWidth = 2;
         this.ctx.strokeStyle = '#eee';
         let xControl = points[1].x,
             yControl = points[1].y;
