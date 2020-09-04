@@ -1,6 +1,6 @@
 <template>
   <v-app>
-    <v-navigation-drawer v-model="drawer" app>
+    <v-navigation-drawer v-model="drawer" :clipped="$vuetify.breakpoint.lgAndUp" app>
       <v-list nav>
         <!-- 切换主题（简单背景调整） -->
         <v-list-item @click="changeBackground">切换亮色/暗色主题</v-list-item>
@@ -44,7 +44,7 @@
       </v-list>
     </v-navigation-drawer>
 
-    <v-app-bar app color="blue darken-3" dark>
+    <v-app-bar app :clipped-left="$vuetify.breakpoint.lgAndUp" color="blue darken-3" dark>
       <v-app-bar-nav-icon @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
 
       <v-file-input class="full-width" accept="image/*" label="选择待加工图片" @change="selectImage"></v-file-input>
@@ -74,6 +74,7 @@
 
           <!-- 输入区 -->
           <div
+            id="inputArea"
             class="d-flex flex-column justify-center align-center full-width"
             :style="isImageLoaded?{}:{display:'none !important'}"
           >
@@ -138,7 +139,10 @@
 
             <v-card v-else class="fixed-right-bottom" dark>
               <v-card-title>加工完成，标记模式已退出</v-card-title>
-              <v-card-text>使用右键点击图片另存为，<br/>或者点击下方按钮撤销加工重新进入标记模式</v-card-text>
+              <v-card-text>
+                使用右键点击图片另存为，
+                <br />或者点击下方按钮撤销加工重新进入标记模式
+              </v-card-text>
 
               <v-card-actions>
                 <v-btn @click="isImageProcessed=false">标记模式</v-btn>
@@ -209,6 +213,8 @@ export default {
 
     imageHeight: "0px",
 
+    /**输入区 */
+    inputArea: null,
     /**输入画布 */
     inputCanvas: null,
     /**标记画布 */
@@ -235,6 +241,7 @@ export default {
     },
   }),
   mounted() {
+    this.inputArea = document.getElementById("inputArea");
     this.inputCanvas = document.getElementById("inputCanvas");
     this.outputCanvas = document.getElementById("outputCanvas");
     this.markCanvas = document.getElementById("markCanvas");
@@ -292,14 +299,15 @@ export default {
       reader.readAsDataURL(file);
       reader.onload = (e) => {
         let image = e.target.result;
+        console.log("image readed");
+        this.scaleFactor = 1;
+        this.translateX = 0;
+        this.translateY = 0;
 
         this.importImageToInputCanvas(image);
 
         this.imageIn = image;
         this.isImageLoaded = true;
-        this.scaleFactor = 1;
-        this.translateX = 0;
-        this.translateY = 0;
       };
     },
     /**选取本机图片作为输出图片的背景 */
@@ -317,6 +325,7 @@ export default {
       let ctx = inputCanvas.getContext("2d");
       let img = new Image();
       img.onload = () => {
+        console.log("image loaded");
         inputCanvas.width = img.width;
         inputCanvas.height = img.height;
         markCanvas.width = img.width;
@@ -324,8 +333,18 @@ export default {
 
         this.marker.removeAllPoints();
 
+        console.log([
+          img.width,
+          img.height,
+          inputCanvas.offsetWidth,
+          inputCanvas.offsetHeight,
+        ]);
+        console.log(inputCanvas);
+
         ctx.drawImage(img, 0, 0);
-        this.imageHeight = inputCanvas.offsetHeight + "px";
+
+        let initialScale = this.inputArea.offsetWidth / inputCanvas.width;
+        this.imageHeight = inputCanvas.height * initialScale + "px";
         this.estimateTime();
       };
       img.src = imageDataUrl;
@@ -580,8 +599,8 @@ export default {
   overflow: hidden;
   /* background-image: linear-gradient(to bottom, #66ccff, #ee82ee); */
 }
-.center-background{
-    background-position-x: center;
+.center-background {
+  background-position-x: center;
   background-position-y: center;
   background-size: cover;
 }
