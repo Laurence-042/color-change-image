@@ -149,9 +149,6 @@
           <!-- 输出图片 -->
           <canvas v-show="false" class="full-width" id="outputCanvas"></canvas>
         </v-row>
-        <v-footer>
-
-        </v-footer>
       </v-container>
     </v-main>
   </v-app>
