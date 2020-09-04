@@ -116,17 +116,6 @@
             item-value="path"
             single-line
           ></v-select>
-          <!-- <select
-            v-show="advanceChangeBackground&&selectedBackgroundMode=='内置背景图片'"
-            v-model="selectedBuildInBackgroundImage"
-          >
-            <option :value="'assets/logo.png'" selected>默认</option>
-            <option
-              v-for="(buildInBackgroundImagePath,buildInBackgroundImageName) in buildInBackgroundImagesPaths"
-              :key="buildInBackgroundImageName"
-              :value="buildInBackgroundImagePath"
-            >{{buildInBackgroundImageName}}</option>
-          </select>-->
         </div>
 
         <!-- 输出图片 -->
@@ -181,9 +170,16 @@ export default {
     backgroundModeOptions: ["选择纯色", "内置背景图片", "本机背景图片"],
     selectedBackgroundMode: "选择纯色",
     pickedBackgroundColor: { r: 255, g: 255, b: 255 },
-    selectedBackgroundImage: "assets/logo.png",
-    buildInBackgroundImagesPaths: [{ name: "logo", path: "assets/logo.png" }],
-    selectedBuildInBackgroundImage: "assets/logo.png",
+    selectedBackgroundImage: null,
+    buildInBackgroundImagesPaths: [
+      { name: "logo", path: "logo.png" },
+      { name: "粉蓝渐变", path: "粉蓝渐变.jpeg" },
+      { name: "红渐变", path: "红渐变.jpeg" },
+      { name: "黄渐变", path: "黄渐变.jpeg" },
+      { name: "绿渐变", path: "绿渐变.jpeg" },
+      { name: "晶格", path: "晶格.jpg" },
+      ],
+    selectedBuildInBackgroundImage: "logo.png",
 
     imageHeight: "200px",
 
@@ -238,7 +234,7 @@ export default {
           return {
             "background-image":
               "url(" +
-              require("@/" + this.selectedBuildInBackgroundImage) +
+              require("@/assets/" + this.selectedBuildInBackgroundImage) +
               ")",
             "background-size": "cover",
           };
@@ -317,16 +313,7 @@ export default {
         (offsetX * this.inputCanvas.width) / this.inputCanvas.offsetWidth;
       let realY =
         (offsetY * this.inputCanvas.height) / this.inputCanvas.offsetHeight;
-      // console.log({ x: offsetX, y: offsetY });
-      // console.log({ realX: realX, realY: realY });
-      // console.log({
-      //   offsetWidth: this.inputCanvas.offsetWidth,
-      //   offsetWidthHeight: this.inputCanvas.offsetHeight,
-      // });
-      // console.log({
-      //   width: this.inputCanvas.width,
-      //   height: this.inputCanvas.height,
-      // });
+
       return { x: realX, y: realY };
     },
     /**处理输入图层组的MouseDown事件 */
