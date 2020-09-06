@@ -123,7 +123,7 @@ export default class {
         } else this.clearCanvas();
     }
 
-    isPointInPath(x, y) {
+    isPointSelected(x, y) {
         return this.ctx.isPointInPath(x, y);
     }
 

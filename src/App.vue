@@ -3,7 +3,26 @@
     <v-navigation-drawer v-model="drawer" :clipped="$vuetify.breakpoint.lgAndUp" app>
       <v-list nav>
         <!-- 切换主题（简单背景调整） -->
-        <v-list-item @click="changeBackground">切换亮色/暗色主题</v-list-item>
+        <v-select
+          v-model="useDarkTheme"
+          :items="[{text:'浅色主题',value:false},{text:'深色主题',value:true}]"
+          single-line
+          class="full-width"
+        ></v-select>
+
+        <v-select
+          v-model="markerType"
+          :items="markerTypes"
+          single-line
+          class="full-width"
+        ></v-select>
+
+        <v-slider
+        v-model="similarColorMarkerThreshold"
+          v-show="markerType=='similarColorMarker'"
+          value="300"
+          max="10000"
+        ></v-slider>
 
         <!-- 高级背景调整 -->
         <v-list-item @click="toggleAdvanceChangeBackground">自定义背景</v-list-item>
@@ -164,16 +183,8 @@
 <script>
 import ImageProcessor from "./util/ImageProcessor";
 import SmoothLineMarker from "./util/smoothLineMarker";
-/* TODO 使用套索（比和路径）对部分内容进行处理
-- 在输入canvas上覆盖一个路径canvas用于展示绘制的路径，
-- 使canvas可以缩放与拖动
-- 绘制闭合路径，并在路径闭合后对路径内的像素进行处理。
-- 保留一键对整图进行处理的功能。
-- 参考
-  - 缩放拖动 https://juejin.im/post/6844904095904432135
-  - 平滑路径 https://wow.techbrood.com/fiddle/11802
-  - API https://developer.mozilla.org/zh-CN/docs/Web/API/CanvasRenderingContext2D/isPointInPath
-*/
+import SimilarColorMarker from "./util/similarColorMarker";
+
 export default {
   name: "App",
   data: () => ({
@@ -225,7 +236,11 @@ export default {
     outputCanvas: null,
 
     /**标记器 */
-    marker: null,
+    markerTypes: ["similarColorMarker","smoothLineMarker"],
+    markerType: "similarColorMarker",
+    smoothLineMarker: null,
+    similarColorMarker: null,
+    similarColorMarkerThreshold:300,
 
     /**缩放比例 */
     scaleFactor: 1,
@@ -247,9 +262,24 @@ export default {
     this.inputCanvas = document.getElementById("inputCanvas");
     this.outputCanvas = document.getElementById("outputCanvas");
     this.markCanvas = document.getElementById("markCanvas");
-    this.marker = new SmoothLineMarker(this.markCanvas);
+    this.smoothLineMarker = new SmoothLineMarker(this.markCanvas);
+    this.similarColorMarker = new SimilarColorMarker(
+      this.markCanvas,
+      this.inputCanvas
+    );
   },
-  watch: {},
+  watch: {
+    /**切换主题 */
+    useDarkTheme() {
+      this.advanceChangeBackground = false;
+      this.$vuetify.theme.isDark = this.useDarkTheme;
+    },
+    similarColorMarkerThreshold(newVal){
+      this.similarColorMarker.threshold=newVal,
+      this.similarColorMarker.removeAllPoints();
+      console.log(this.similarColorMarker.points);
+    }
+  },
   computed: {
     /**返回当前选中的颜色格式化的结果 */
     colorHint() {
@@ -293,6 +323,15 @@ export default {
           ")",
       };
     },
+    marker() {
+      switch (this.markerType) {
+        case "smoothLineMarker":
+          return this.smoothLineMarker;
+        case "similarColorMarker":
+          return this.similarColorMarker;
+      }
+      return null;
+    },
   },
   methods: {
     /**选取本机图片作为输入 */
@@ -334,14 +373,6 @@ export default {
         markCanvas.height = img.height;
 
         this.marker.removeAllPoints();
-
-        console.log([
-          img.width,
-          img.height,
-          inputCanvas.offsetWidth,
-          inputCanvas.offsetHeight,
-        ]);
-        console.log(inputCanvas);
 
         ctx.drawImage(img, 0, 0);
 
@@ -483,12 +514,6 @@ export default {
           .substr(1)
       );
     },
-    /**切换主题 */
-    changeBackground() {
-      this.advanceChangeBackground = false;
-      this.useDarkTheme = !this.useDarkTheme;
-      this.$vuetify.theme.isDark = this.useDarkTheme;
-    },
     /**切换使用高级背景 */
     toggleAdvanceChangeBackground() {
       this.advanceChangeBackground = !this.advanceChangeBackground;
@@ -566,7 +591,7 @@ export default {
       for (let i = 0; i < imageInData.height; i++) {
         for (let j = 0; j < imageInData.width; j++) {
           // 坐标的x是列序号，y是行序号，因此这里需要倒过来
-          if (this.marker.isPointInPath(j, i)) {
+          if (this.marker.isPointSelected(j, i)) {
             ImageProcessor.processPixel(
               imageInData,
               imageOutData,
