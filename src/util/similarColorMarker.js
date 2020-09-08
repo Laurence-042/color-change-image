@@ -1,39 +1,10 @@
+import ImageToolKit from "./ImageToolKit";
+
 class Point {
     constructor(x, y) {
         this.x = x;
         this.y = y;
     }
-}
-
-ImageData.prototype.getChannelOfPixel = function (row, col, channel) {
-    return this.data[row * (this.width * 4) + col * 4 + channel];
-};
-ImageData.prototype.setChannelOfPixel = function (row, col, channel, value) {
-    this.data[row * (this.width * 4) + col * 4 + channel] = value;
-};
-
-function RgbaToHEX(rgba) {
-    return "#" + rgba.r.toString(16) + rgba.g.toString(16) + rgba.b.toString(16) + rgba.a.toString(16);
-}
-
-function GetRgbaDistance(rgba0, rgba1) {
-    return (rgba0.r - rgba1.r) ** 2 + (rgba0.g - rgba1.g) ** 2 + (rgba0.b - rgba1.b) ** 2 + (rgba0.a - rgba1.a) ** 2;
-}
-
-function matrix(rows, cols, defaultValue) {
-    var arr = [];
-    // Creates all lines:
-    for (var i = 0; i < rows; i++) {
-        // Creates an empty line
-        arr.push([]);
-        // Adds cols to the empty line:
-        arr[i].push(new Array(cols));
-        for (var j = 0; j < cols; j++) {
-            // Initializes:
-            arr[i][j] = defaultValue;
-        }
-    }
-    return arr;
 }
 
 export default class {
@@ -48,10 +19,9 @@ export default class {
         this.inputImageData = this.inputCtx.getImageData(0, 0, this.inputCanvas.width, this.inputCanvas.height);
 
         /**
-         * 当前版本约定：fillColor的alpha通道必为255，boundaryColor的alpha通道必为0<br/>
-         * 如果性能可接受，再尝试进行扩展使程序支持非完全透明的boundaryColor（只需修改isPointSelected的判定条件）
+         * 当前版本约定：fillColor的alpha通道必为正数，boundaryColor的alpha通道必为0
          */
-        this.fillColor = { r: 0, g: 255, b: 0, a: 255 }
+        this.fillColor = { r: 0, g: 255, b: 0, a: 127 }
         this.boundaryColor = { r: 0, g: 0, b: 0, a: 0 }
         this.threshold = 300
 
@@ -71,35 +41,19 @@ export default class {
         this.markCtx.putImageData(this.markImageData, 0, 0);
     }
 
-    getInputCanvasPixelChannel(row, col, channel) {
-        return this.inputImageData.data[row * (this.inputImageData.width * 4) + col * 4 + channel];
-    }
-
-    setMarkCanvasPixelChannel(row, col, channel, value) {
-        this.markImageData.data[row * (this.markImageData.width * 4) + col * 4 + channel] = value;
-    }
-
     getInputCanvasPixel(row, col) {
-        return {
-            r: this.getInputCanvasPixelChannel(row, col, 0),
-            g: this.getInputCanvasPixelChannel(row, col, 1),
-            b: this.getInputCanvasPixelChannel(row, col, 2),
-            a: this.getInputCanvasPixelChannel(row, col, 3)
-        }
+        return ImageToolKit.getPixel(this.inputImageData,row,col);
     }
 
     setMarkCanvasPixel(row, col, rgba) {
-        this.setMarkCanvasPixelChannel(row, col, 0, rgba.r);
-        this.setMarkCanvasPixelChannel(row, col, 1, rgba.g);
-        this.setMarkCanvasPixelChannel(row, col, 2, rgba.b);
-        this.setMarkCanvasPixelChannel(row, col, 3, rgba.a);
+        ImageToolKit.setPixel(this.markImageData,row,col,rgba);
     }
 
     seedFilling(x, y, fillColor) {
         let row = y;
         let col = x;
         let stack = [[row, col, this.getInputCanvasPixel(row, col)]];
-        let fillHelper = matrix(this.inputCanvas.height, this.inputCanvas.width, 0);
+        let fillHelper = ImageToolKit.matrix(this.inputCanvas.height, this.inputCanvas.width, 0);
         let count = 0;
         while (stack.length != 0) {
             let entry = stack.pop();
@@ -112,7 +66,7 @@ export default class {
             }
 
             let currentPixel = this.getInputCanvasPixel(row, col);
-            let distance = GetRgbaDistance(currentPixel, referrenceColor);
+            let distance = ImageToolKit.GetRgbaDistance(currentPixel, referrenceColor);
             // console.log(RgbaToHEX(currentPixel), RgbaToHEX(referrenceColor), distance)
             if (distance < this.threshold) {
                 this.setMarkCanvasPixel(row, col, fillColor);
@@ -136,7 +90,10 @@ export default class {
     fillArea(x, y) {
         this.refreshInputImageData();
         this.refreshMarkImageData();
+        // console.log(this.inputImageData)
+        // console.log(y * (this.inputImageData.width * 4) + x * 4)
         this.seedFilling(x, y, this.fillColor);
+        // console.log(this.markImageData)
         this.flushBackMarkImageData();
     }
 
@@ -148,7 +105,7 @@ export default class {
     }
 
     clearMarkCanvas() {
-        this.markCtx.fillStyle = RgbaToHEX(this.boundaryColor);
+        this.markCtx.fillStyle = ImageToolKit.RgbaToHEX(this.boundaryColor);
         this.markCtx.clearRect(0, 0, this.markCanvas.width, this.markCanvas.height);
         this.markCtx.fillRect(0, 0, this.markCanvas.width, this.markCanvas.height);
     }
@@ -175,10 +132,28 @@ export default class {
     isPointSelected(x, y) {
         let row = y;
         let col = x;
-        return this.markImageData.data[row * (this.markImageData.width * 4) + col * 4 + 3] == 255;
+        return this.markImageData.data[row * (this.markImageData.width * 4) + col * 4 + 3] != 0;
     }
 
     isMarked() {
         return this.points.length != 0;
+    }
+
+    collectMask(){
+        let mask = ImageToolKit.matrix(this.markCanvas.height, this.markCanvas.width, 0);
+        let width = this.markCanvas.width;
+        let height = this.markCanvas.height;
+
+        for(let row=0;row<height;row++){
+            for(let col=0;col<width;col++){
+                mask[row][col]=this.isPointSelected(col,row)?1:0;
+            }
+
+        }
+        return mask;
+    }
+
+    reset(){
+        this.removeAllPoints();
     }
 }

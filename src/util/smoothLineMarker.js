@@ -1,3 +1,5 @@
+import ImageToolKit from "./ImageToolKit";
+
 class Point {
     constructor(x, y) {
         this.x = x;
@@ -6,9 +8,9 @@ class Point {
 }
 
 export default class {
-    constructor(canvas) {
-        this.canvas = canvas;
-        this.ctx = canvas.getContext('2d');
+    constructor(markCanvas) {
+        this.markCanvas = markCanvas;
+        this.ctx = markCanvas.getContext('2d');
         this.displayGuideLines = true;
         this.displayPoints = true;
         this.displayPointNumbers = false;
@@ -70,7 +72,7 @@ export default class {
 
         // 连接第一个点与前两个点的中点，并将中点作为曲线的起点
         this.ctx.beginPath();
-        this.ctx.moveTo(points[0].x , points[0].y);
+        this.ctx.moveTo(points[0].x, points[0].y);
         this.ctx.lineTo((points[0].x + points[1].x) / 2, (points[0].y + points[1].y) / 2);
 
         // 总是以前一个点为控制点，以当前点与控制点的中间为终点
@@ -88,14 +90,14 @@ export default class {
 
         }
 
-        this.ctx.lineTo(xControl,yControl);
+        this.ctx.lineTo(xControl, yControl);
         this.ctx.closePath();
 
         this.ctx.stroke();
     }
 
     clearCanvas() {
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.clearRect(0, 0, this.markCanvas.width, this.markCanvas.height);
     }
 
     removeAllPoints() {
@@ -129,5 +131,21 @@ export default class {
 
     isMarked() {
         return this.points.length != 0;
+    }
+
+    collectMask() {
+        let mask = ImageToolKit.matrix(this.markCanvas.height, this.markCanvas.width, 0);
+        let width = this.markCanvas.width;
+        let height = this.markCanvas.height;
+        for (let row = 0; row < height; row++) {
+            for (let col = 0; col < width; col++) {
+                mask[row][col] = this.isPointSelected(col, row) ? 1 : 0;
+            }
+        }
+        return mask;
+    }
+
+    reset(){
+        this.removeAllPoints();
     }
 }

@@ -10,18 +10,14 @@
           class="full-width"
         ></v-select>
 
-        <v-select
-          v-model="markerType"
-          :items="markerTypes"
-          single-line
-          class="full-width"
-        ></v-select>
+        <v-select v-model="markerType" :items="markerTypes" single-line class="full-width"></v-select>
 
         <v-slider
-        v-model="similarColorMarkerThreshold"
+          v-model="similarColorMarkerThreshold"
           v-show="markerType=='similarColorMarker'"
           value="300"
           max="10000"
+          label="阈值"
         ></v-slider>
 
         <!-- 高级背景调整 -->
@@ -107,16 +103,22 @@
             >
               <!-- 输入图层组 -->
               <div style="transform-origin: 0 0;" :style="inputCanvasGroupTransformStyle">
-                <!-- 输入图片，位于下方图层，不应修改此图片 -->
+                <!-- 输入图片，不应修改此图片 -->
                 <canvas
                   class="full-width"
                   style="position: absolute; left: 0; top: 0; z-index: 0;"
                   id="inputCanvas"
                 ></canvas>
-                <!-- 标记路径，使用标记方式指定区域进行加工时，标记显示在本图层，位于上方图层 -->
+                <!-- 蒙版图层 -->
                 <canvas
                   class="full-width"
                   style="position: absolute; left: 0; top: 0; z-index: 1;"
+                  id="maskCanvas"
+                ></canvas>
+                <!-- 标记路径，使用标记方式指定区域进行加工时，标记显示在本图层-->
+                <canvas
+                  class="full-width"
+                  style="position: absolute; left: 0; top: 0; z-index: 2;"
                   id="markCanvas"
                   @mousedown="inputCanvasGroupMouseDownHandler"
                   @mouseup="inputCanvasGroupMouseUpHandler"
@@ -146,6 +148,9 @@
 
               <v-card-actions>
                 <v-btn @click="processImageAsync">开始加工</v-btn>
+                <v-btn @click="addMarkedAreaMask">将选区加入蒙版</v-btn>
+                <v-btn @click="exceptMarkedAreaMask">从蒙版中减去选区</v-btn>
+                <v-btn @click="intersectMarkedAreaMask">将蒙版与选区相交</v-btn>
               </v-card-actions>
 
               <v-dialog v-model="isImageProcessing" hide-overlay persistent width="300">
@@ -182,6 +187,8 @@
 
 <script>
 import ImageProcessor from "./util/ImageProcessor";
+import ImageToolKit from "./util/ImageToolKit";
+import MaskManager from "./util/MaskManager";
 import SmoothLineMarker from "./util/smoothLineMarker";
 import SimilarColorMarker from "./util/similarColorMarker";
 
@@ -230,17 +237,22 @@ export default {
     inputArea: null,
     /**输入画布 */
     inputCanvas: null,
+    /**蒙版画布 */
+    maskCanvas: null,
     /**标记画布 */
     markCanvas: null,
     /**输出画布 */
     outputCanvas: null,
 
+    /**蒙版管理器 */
+    maskManager: null,
+
     /**标记器 */
-    markerTypes: ["similarColorMarker","smoothLineMarker"],
+    markerTypes: ["similarColorMarker", "smoothLineMarker"],
     markerType: "similarColorMarker",
     smoothLineMarker: null,
     similarColorMarker: null,
-    similarColorMarkerThreshold:300,
+    similarColorMarkerThreshold: 300,
 
     /**缩放比例 */
     scaleFactor: 1,
@@ -260,13 +272,15 @@ export default {
   mounted() {
     this.inputArea = document.getElementById("inputArea");
     this.inputCanvas = document.getElementById("inputCanvas");
-    this.outputCanvas = document.getElementById("outputCanvas");
+    this.maskCanvas = document.getElementById("maskCanvas");
     this.markCanvas = document.getElementById("markCanvas");
+    this.outputCanvas = document.getElementById("outputCanvas");
     this.smoothLineMarker = new SmoothLineMarker(this.markCanvas);
     this.similarColorMarker = new SimilarColorMarker(
       this.markCanvas,
       this.inputCanvas
     );
+    this.maskManager = new MaskManager(this.maskCanvas);
   },
   watch: {
     /**切换主题 */
@@ -274,11 +288,11 @@ export default {
       this.advanceChangeBackground = false;
       this.$vuetify.theme.isDark = this.useDarkTheme;
     },
-    similarColorMarkerThreshold(newVal){
-      this.similarColorMarker.threshold=newVal,
-      this.similarColorMarker.removeAllPoints();
+    similarColorMarkerThreshold(newVal) {
+      (this.similarColorMarker.threshold = newVal),
+        this.similarColorMarker.removeAllPoints();
       console.log(this.similarColorMarker.points);
-    }
+    },
   },
   computed: {
     /**返回当前选中的颜色格式化的结果 */
@@ -362,17 +376,22 @@ export default {
     /**将图像绘制在指定canvas上，设置canvas尺寸，设置包裹canvas的父元素div的高度，估计 */
     importImageToInputCanvas(imageDataUrl) {
       let inputCanvas = this.inputCanvas;
+      let maskCanvas = this.maskCanvas;
       let markCanvas = this.markCanvas;
+
       let ctx = inputCanvas.getContext("2d");
       let img = new Image();
       img.onload = () => {
         console.log("image loaded");
         inputCanvas.width = img.width;
         inputCanvas.height = img.height;
+        maskCanvas.width = img.width;
+        maskCanvas.height = img.height;
         markCanvas.width = img.width;
         markCanvas.height = img.height;
 
         this.marker.removeAllPoints();
+        this.maskManager.initMask();
 
         ctx.drawImage(img, 0, 0);
 
@@ -529,11 +548,23 @@ export default {
       console.log("pop point");
       this.marker.popPoint();
     },
+    addMarkedAreaMask() {
+      this.maskManager.orMask(this.marker.collectMask());
+      this.marker.reset();
+    },
+    intersectMarkedAreaMask() {
+      this.maskManager.andMask(this.marker.collectMask());
+      this.marker.reset();
+    },
+    exceptMarkedAreaMask() {
+      this.maskManager.exceptMask(this.marker.collectMask());
+      this.marker.reset();
+    },
     /**异步处理 */
     processImageAsync() {
       setTimeout(() => {
-        if (this.marker.isMarked()) {
-          this.processMarkedImage();
+        if (this.maskManager.isMarked()) {
+          this.processImageUnderMask();
         } else {
           this.processWholeImage();
         }
@@ -574,7 +605,7 @@ export default {
       this.isImageProcessed = true;
     },
 
-    processMarkedImage() {
+    processImageUnderMask() {
       this.outputCanvas.width = this.inputCanvas.width;
       this.outputCanvas.height = this.inputCanvas.height;
 
@@ -591,7 +622,7 @@ export default {
       for (let i = 0; i < imageInData.height; i++) {
         for (let j = 0; j < imageInData.width; j++) {
           // 坐标的x是列序号，y是行序号，因此这里需要倒过来
-          if (this.marker.isPointSelected(j, i)) {
+          if (this.maskManager.isPointSelected(j, i)) {
             ImageProcessor.processPixel(
               imageInData,
               imageOutData,
@@ -600,7 +631,7 @@ export default {
               backgroundColor
             );
           } else {
-            ImageProcessor.copyPixel(imageInData, imageOutData, i, j);
+            ImageToolKit.copyPixel(imageInData, imageOutData, i, j);
           }
         }
         console.log(i + "/" + imageInData.height);
