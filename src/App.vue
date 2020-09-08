@@ -289,9 +289,7 @@ export default {
       this.$vuetify.theme.isDark = this.useDarkTheme;
     },
     similarColorMarkerThreshold(newVal) {
-      (this.similarColorMarker.threshold = newVal),
-        this.similarColorMarker.removeAllPoints();
-      console.log(this.similarColorMarker.points);
+      this.similarColorMarker.threshold = newVal;
     },
   },
   computed: {
