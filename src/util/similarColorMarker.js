@@ -140,15 +140,15 @@ export default class {
     }
 
     collectMask(){
-        let mask = ImageToolKit.matrix(this.markCanvas.height, this.markCanvas.width, 0);
+        this.refreshMarkImageData();
         let width = this.markCanvas.width;
         let height = this.markCanvas.height;
+        let mask = ImageToolKit.matrix(height, width, 0);
 
         for(let row=0;row<height;row++){
             for(let col=0;col<width;col++){
                 mask[row][col]=this.isPointSelected(col,row)?1:0;
             }
-
         }
         return mask;
     }

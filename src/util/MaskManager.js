@@ -73,7 +73,7 @@ export default class {
         this.marked = false;
         let height = mask0.length;
         let width = mask0[0].length;
-        let res = ImageToolKit.matrix(mask0.length, mask0[0].length);
+        let res = ImageToolKit.matrix(height, width);
         for (let row = 0; row < height; row++) {
             for (let col = 0; col < width; col++) {
                 res[row][col] = mergeFunction(mask0[row][col], mask1[row][col]);

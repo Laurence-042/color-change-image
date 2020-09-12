@@ -141,6 +141,7 @@
               </div>
             </div>
 
+            <!-- 输出图片img -->
             <img
               v-show="isImageProcessed"
               :src="imageOut"
@@ -148,6 +149,7 @@
               class="full-width center-background"
             />
 
+            <!-- 操作区 -->
             <v-card v-if="!isImageProcessed" class="fixed-right-bottom" dark>
               <v-card-title
                 v-if="colorSelected"
@@ -187,7 +189,7 @@
             </v-card>
           </div>
 
-          <!-- 输出图片 -->
+          <!-- 输出图片画布 -->
           <canvas v-show="false" class="full-width" id="outputCanvas"></canvas>
         </v-row>
       </v-container>
