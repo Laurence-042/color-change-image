@@ -199,495 +199,414 @@
 </template>
 
 
-<script>
+<script setup>
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useTheme } from 'vuetify'
-import ImageProcessor from "./util/ImageProcessor";
-import ImageToolKit from "./util/ImageToolKit";
-import MaskManager from "./util/MaskManager";
-import SmoothLineMarker from "./util/smoothLineMarker";
-import SimilarColorMarker from "./util/similarColorMarker";
+import ImageProcessor from "./util/ImageProcessor"
+import ImageToolKit from "./util/ImageToolKit"
+import MaskManager from "./util/MaskManager"
+import SmoothLineMarker from "./util/smoothLineMarker"
+import SimilarColorMarker from "./util/similarColorMarker"
 
-// 使用 Vite 的 glob 导入功能动态加载所有背景图片
+// ========== 背景图片加载 ==========
 const backgroundImageModules = import.meta.glob('@/assets/backgrounds/*', { eager: true, import: 'default' })
+const backgroundImages = {}
+const buildInBackgroundImagesPaths = []
 
-export default {
-  name: "App",
-  setup() {
-    const theme = useTheme()
-    
-    // 将导入的模块转换为 { filename: url } 格式
-    const backgroundImages = {}
-    const buildInBackgroundImagesPaths = []
-    
-    for (const path in backgroundImageModules) {
-      const filename = path.split('/').pop()
-      const name = filename.replace(/\.\w+$/, '') // 去除扩展名作为显示名称
-      backgroundImages[filename] = backgroundImageModules[path]
-      buildInBackgroundImagesPaths.push({
-        name: name,
-        path: filename
-      })
-    }
-    
-    return { theme, backgroundImages, buildInBackgroundImagesPaths }
-  },
-  data: () => ({
-    /**导航抽屉 */
-    drawer: null,
+for (const path in backgroundImageModules) {
+  const filename = path.split('/').pop()
+  const name = filename.replace(/\.\w+$/, '')
+  backgroundImages[filename] = backgroundImageModules[path]
+  buildInBackgroundImagesPaths.push({ name, path: filename })
+}
 
-    /**待处理图片是否已加载 */
-    isImageLoaded: false,
-    /**待处理图片是否正在处理 */
-    isImageProcessing: false,
-    /**待处理图片是否已处理完成 */
-    isImageProcessed: false,
-    /**待处理图片 */
-    imageIn: null,
-    /**处理后图片 */
-    imageOut: null,
+// ========== 主题 ==========
+const theme = useTheme()
 
-    /**选中的参考颜色 */
-    colorRGB: { r: 122, g: 122, b: 122 },
-    colorSelected: false,
-    estimatedTime: 0,
+// ========== 响应式状态 ==========
+const drawer = ref(null)
+const isImageLoaded = ref(false)
+const isImageProcessing = ref(false)
+const isImageProcessed = ref(false)
+const imageIn = ref(null)
+const imageOut = ref(null)
 
-    useDarkTheme: false,
+const colorRGB = ref({ r: 122, g: 122, b: 122 })
+const colorSelected = ref(false)
+const estimatedTime = ref(0)
 
-    advanceChangeBackground: false,
-    backgroundModeOptions: ["选择纯色", "内置背景图片", "本机背景图片"],
-    selectedBackgroundMode: "选择纯色",
-    pickedBackgroundColor: { r: 255, g: 255, b: 255 },
-    selectedBackgroundImage: null,
-    selectedBuildInBackgroundImage: "",
+const useDarkTheme = ref(false)
+const advanceChangeBackground = ref(false)
+const backgroundModeOptions = ["选择纯色", "内置背景图片", "本机背景图片"]
+const selectedBackgroundMode = ref("选择纯色")
+const pickedBackgroundColor = ref({ r: 255, g: 255, b: 255 })
+const selectedBackgroundImage = ref(null)
+const selectedBuildInBackgroundImage = ref("")
 
-    imageHeight: "0px",
+const imageHeight = ref("0px")
 
-    /**输入区 */
-    inputArea: null,
-    /**输入画布 */
-    inputCanvas: null,
-    /**蒙版画布 */
-    maskCanvas: null,
-    /**标记画布 */
-    markCanvas: null,
-    /**输出画布 */
-    outputCanvas: null,
+// Canvas 元素引用
+const inputArea = ref(null)
+const inputCanvas = ref(null)
+const maskCanvas = ref(null)
+const markCanvas = ref(null)
+const outputCanvas = ref(null)
 
-    /**蒙版管理器 */
-    maskManager: null,
+// 工具类实例
+const maskManager = ref(null)
+const smoothLineMarker = ref(null)
+const similarColorMarker = ref(null)
 
-    /**标记器 */
-    markerTypes: ["similarColorMarker", "smoothLineMarker"],
-    markerType: "similarColorMarker",
-    smoothLineMarker: null,
-    similarColorMarker: null,
-    similarColorMarkerThreshold: 300,
+const markerTypes = ["similarColorMarker", "smoothLineMarker"]
+const markerType = ref("similarColorMarker")
+const similarColorMarkerThreshold = ref(300)
 
-    /**缩放比例 */
-    scaleFactor: 1,
-    /**X轴平移 */
-    translateX: 0,
-    /**Y轴平移 */
-    translateY: 0,
-    /**拖动辅助数据，存储拖动状态 */
-    dragHelper: {
-      lastX: 0,
-      lastY: 0,
-      mousedown: false,
-      mouseButton: 0,
-      mousedownTime: new Date(),
-    },
-  }),
-  mounted() {
-    this.inputArea = document.getElementById("inputArea");
-    this.inputCanvas = document.getElementById("inputCanvas");
-    this.maskCanvas = document.getElementById("maskCanvas");
-    this.markCanvas = document.getElementById("markCanvas");
-    this.outputCanvas = document.getElementById("outputCanvas");
-    this.smoothLineMarker = new SmoothLineMarker(this.markCanvas);
-    this.similarColorMarker = new SimilarColorMarker(
-      this.markCanvas,
-      this.inputCanvas
-    );
-    this.maskManager = new MaskManager(this.maskCanvas);
-    
-    // 设置默认选中第一个背景图片
-    if (this.buildInBackgroundImagesPaths.length > 0) {
-      this.selectedBuildInBackgroundImage = this.buildInBackgroundImagesPaths[0].path;
-    }
-  },
-  watch: {
-    /**切换主题 */
-    useDarkTheme(newVal) {
-      this.advanceChangeBackground = false;
-      this.theme.global.name.value = newVal ? 'dark' : 'light';
-    },
-    similarColorMarkerThreshold(newVal) {
-      this.similarColorMarker.threshold = newVal;
-    },
-  },
-  computed: {
-    /**返回当前选中的颜色格式化的结果 */
-    colorHint() {
-      return this.formatColor(this.colorRGB);
-    },
-    /**使用非默认主题时返回相应的输出画布背景 */
-    advanceBackground() {
-      if (!this.advanceChangeBackground) {
-        return {};
-      }
-      switch (this.selectedBackgroundMode) {
-        case "选择纯色":
-          return {
-            "background-color": this.formatColor(this.pickedBackgroundColor),
-          };
-        case "内置背景图片":
-          return {
-            "background-image": `url(${this.backgroundImages[this.selectedBuildInBackgroundImage]})`,
-            "background-size": "cover",
-          };
-        case "本机背景图片":
-          return {
-            "background-image": "url(" + this.selectedBackgroundImage + ")",
-            "background-size": "cover",
-          };
-      }
-      return {};
-    },
-    inputCanvasGroupTransformStyle() {
+const scaleFactor = ref(1)
+const translateX = ref(0)
+const translateY = ref(0)
+const dragHelper = ref({
+  lastX: 0,
+  lastY: 0,
+  mousedown: false,
+  mouseButton: 0,
+  mousedownTime: new Date(),
+})
+
+// ========== 计算属性 ==========
+const colorHint = computed(() => formatColor(colorRGB.value))
+
+const advanceBackground = computed(() => {
+  if (!advanceChangeBackground.value) return {}
+  
+  switch (selectedBackgroundMode.value) {
+    case "选择纯色":
+      return { "background-color": formatColor(pickedBackgroundColor.value) }
+    case "内置背景图片":
       return {
-        transform:
-          "translate(" +
-          this.translateX +
-          "px," +
-          this.translateY +
-          "px) scale(" +
-          this.scaleFactor +
-          ")",
-      };
-    },
-    marker() {
-      switch (this.markerType) {
-        case "smoothLineMarker":
-          return this.smoothLineMarker;
-        case "similarColorMarker":
-          return this.similarColorMarker;
+        "background-image": `url(${backgroundImages[selectedBuildInBackgroundImage.value]})`,
+        "background-size": "cover",
       }
-      return null;
-    },
-  },
-  methods: {
-    /**选取本机图片作为输入 */
-    async selectImage(event) {
-      const file = event?.target?.files?.[0];
-      if (!file) return;
-      
-      try {
-        const image = await this.readFileAsDataURL(file);
-        console.log("image readed");
-        this.scaleFactor = 1;
-        this.translateX = 0;
-        this.translateY = 0;
-
-        this.importImageToInputCanvas(image);
-
-        this.imageIn = image;
-        this.isImageLoaded = true;
-      } catch (error) {
-        console.error("Failed to read image:", error);
+    case "本机背景图片":
+      return {
+        "background-image": `url(${selectedBackgroundImage.value})`,
+        "background-size": "cover",
       }
-    },
-    /**选取本机图片作为输出图片的背景 */
-    async selectBackgroundImage(event) {
-      const file = event?.target?.files?.[0];
-      if (!file) return;
-      
-      try {
-        this.selectedBackgroundImage = await this.readFileAsDataURL(file);
-      } catch (error) {
-        console.error("Failed to read background image:", error);
-      }
-    },
-    /**将文件读取为 DataURL */
-    readFileAsDataURL(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-        reader.onerror = (error) => reject(error);
-        reader.readAsDataURL(file);
-      });
-    },
-    /**将图像绘制在指定canvas上，设置canvas尺寸，设置包裹canvas的父元素div的高度，估计 */
-    importImageToInputCanvas(imageDataUrl) {
-      let inputCanvas = this.inputCanvas;
-      let maskCanvas = this.maskCanvas;
-      let markCanvas = this.markCanvas;
+    default:
+      return {}
+  }
+})
 
-      let ctx = inputCanvas.getContext("2d");
-      let img = new Image();
-      img.onload = () => {
-        console.log("image loaded");
-        inputCanvas.width = img.width;
-        inputCanvas.height = img.height;
-        maskCanvas.width = img.width;
-        maskCanvas.height = img.height;
-        markCanvas.width = img.width;
-        markCanvas.height = img.height;
+const inputCanvasGroupTransformStyle = computed(() => ({
+  transform: `translate(${translateX.value}px, ${translateY.value}px) scale(${scaleFactor.value})`
+}))
 
-        this.marker.removeAllPoints();
-        this.maskManager.initMask();
+const marker = computed(() => {
+  return markerType.value === "smoothLineMarker" 
+    ? smoothLineMarker.value 
+    : similarColorMarker.value
+})
 
-        ctx.drawImage(img, 0, 0);
+// ========== 监听器 ==========
+watch(useDarkTheme, (newVal) => {
+  advanceChangeBackground.value = false
+  theme.global.name.value = newVal ? 'dark' : 'light'
+})
 
-        let initialScale = this.inputArea.offsetWidth / inputCanvas.width;
-        this.imageHeight = inputCanvas.height * initialScale + "px";
-        this.estimateTime();
-      };
-      img.src = imageDataUrl;
-    },
-    estimateTime() {
-      this.estimatedTime =
-        (this.inputCanvas.width * this.inputCanvas.height * 7) / 9068000;
-    },
-    getRealPosition(offsetX, offsetY) {
-      let realX =
-        (offsetX * this.inputCanvas.width) / this.inputCanvas.offsetWidth;
-      let realY =
-        (offsetY * this.inputCanvas.height) / this.inputCanvas.offsetHeight;
+watch(similarColorMarkerThreshold, (newVal) => {
+  if (similarColorMarker.value) {
+    similarColorMarker.value.threshold = newVal
+  }
+})
 
-      return { x: realX, y: realY };
-    },
-    /**处理输入图层组的MouseDown事件 */
-    inputCanvasGroupMouseDownHandler(e) {
-      this.dragHelper.lastX = e.clientX;
-      this.dragHelper.lastY = e.clientY;
-      this.dragHelper.mousedown = true;
-      this.dragHelper.mouseButton = e.button;
-      this.dragHelper.mousedownTime = new Date();
-    },
-    /**处理输入图层组的MouseUp事件 */
-    inputCanvasGroupMouseUpHandler(e) {
-      if (
-        new Date() - this.dragHelper.mousedownTime < 100 &&
-        this.dragHelper.mouseButton == e.button
-      ) {
-        // left click
-        if (this.dragHelper.mouseButton == 0) {
-          this.colorSelected ? this.addWayPoint(e) : this.pickColor(e);
-        }
-        // right click
-        if (this.dragHelper.mouseButton == 2) {
-          this.popWayPoint();
-        }
-      }
+// ========== 生命周期 ==========
+onMounted(() => {
+  inputArea.value = document.getElementById("inputArea")
+  inputCanvas.value = document.getElementById("inputCanvas")
+  maskCanvas.value = document.getElementById("maskCanvas")
+  markCanvas.value = document.getElementById("markCanvas")
+  outputCanvas.value = document.getElementById("outputCanvas")
+  
+  smoothLineMarker.value = new SmoothLineMarker(markCanvas.value)
+  similarColorMarker.value = new SimilarColorMarker(markCanvas.value, inputCanvas.value)
+  maskManager.value = new MaskManager(maskCanvas.value)
+  
+  if (buildInBackgroundImagesPaths.length > 0) {
+    selectedBuildInBackgroundImage.value = buildInBackgroundImagesPaths[0].path
+  }
+})
 
-      this.dragHelper.mousedown = false;
-    },
-    /**处理输入图层组的MouseMove事件 */
-    inputCanvasGroupMouseMoveHandler(e) {
-      if (!this.dragHelper.mousedown) {
-        return;
-      }
+// ========== 文件处理方法 ==========
+const readFileAsDataURL = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => resolve(e.target.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
 
-      this.moveInputCanvasGroup(
-        e.clientX - this.dragHelper.lastX,
-        e.clientY - this.dragHelper.lastY
-      );
-      this.dragHelper.lastX = e.clientX;
-      this.dragHelper.lastY = e.clientY;
-    },
-    inputCanvasGroupMouseWheelHandler(e) {
-      if (e.deltaY < 0) {
-        this.scaleInputCanvasGroup(1.1, e.offsetX, e.offsetY);
+const selectImage = async (event) => {
+  const file = event?.target?.files?.[0]
+  if (!file) return
+  
+  try {
+    const image = await readFileAsDataURL(file)
+    console.log("image loaded")
+    scaleFactor.value = 1
+    translateX.value = 0
+    translateY.value = 0
+    
+    importImageToInputCanvas(image)
+    imageIn.value = image
+    isImageLoaded.value = true
+  } catch (error) {
+    console.error("Failed to read image:", error)
+  }
+}
+
+const selectBackgroundImage = async (event) => {
+  const file = event?.target?.files?.[0]
+  if (!file) return
+  
+  try {
+    selectedBackgroundImage.value = await readFileAsDataURL(file)
+  } catch (error) {
+    console.error("Failed to read background image:", error)
+  }
+}
+
+const importImageToInputCanvas = (imageDataUrl) => {
+  const canvas = inputCanvas.value
+  const mask = maskCanvas.value
+  const mark = markCanvas.value
+  const ctx = canvas.getContext("2d")
+  const img = new Image()
+  
+  img.onload = () => {
+    console.log("image rendered")
+    canvas.width = img.width
+    canvas.height = img.height
+    mask.width = img.width
+    mask.height = img.height
+    mark.width = img.width
+    mark.height = img.height
+    
+    marker.value.removeAllPoints()
+    maskManager.value.initMask()
+    ctx.drawImage(img, 0, 0)
+    
+    const initialScale = inputArea.value.offsetWidth / canvas.width
+    imageHeight.value = `${canvas.height * initialScale}px`
+    estimateTime()
+  }
+  
+  img.src = imageDataUrl
+}
+
+const estimateTime = () => {
+  const pixels = inputCanvas.value.width * inputCanvas.value.height
+  estimatedTime.value = Math.round((pixels * 7) / 9068000)
+}
+
+// ========== 颜色处理 ==========
+const formatColor = (rawColor) => {
+  const hex = ((1 << 24) + (rawColor.r << 16) + (rawColor.g << 8) + rawColor.b)
+    .toString(16)
+    .slice(1)
+  return `#${hex}`
+}
+
+const pickColor = (e) => {
+  const { x, y } = getRealPosition(e.offsetX, e.offsetY)
+  const ctx = inputCanvas.value.getContext("2d")
+  const [r, g, b] = ctx.getImageData(x, y, 1, 1).data
+  colorRGB.value = { r, g, b }
+  colorSelected.value = true
+}
+
+// ========== 坐标转换 ==========
+const getRealPosition = (offsetX, offsetY) => {
+  const canvas = inputCanvas.value
+  return {
+    x: (offsetX * canvas.width) / canvas.offsetWidth,
+    y: (offsetY * canvas.height) / canvas.offsetHeight
+  }
+}
+
+// ========== 鼠标事件处理 ==========
+const inputCanvasGroupMouseDownHandler = (e) => {
+  dragHelper.value = {
+    lastX: e.clientX,
+    lastY: e.clientY,
+    mousedown: true,
+    mouseButton: e.button,
+    mousedownTime: new Date()
+  }
+}
+
+const inputCanvasGroupMouseUpHandler = (e) => {
+  const timeDiff = new Date() - dragHelper.value.mousedownTime
+  const sameButton = dragHelper.value.mouseButton === e.button
+  
+  if (timeDiff < 100 && sameButton) {
+    if (e.button === 0) { // 左键
+      colorSelected.value ? addWayPoint(e) : pickColor(e)
+    } else if (e.button === 2) { // 右键
+      popWayPoint()
+    }
+  }
+  
+  dragHelper.value.mousedown = false
+}
+
+const inputCanvasGroupMouseMoveHandler = (e) => {
+  if (!dragHelper.value.mousedown) return
+  
+  const deltaX = e.clientX - dragHelper.value.lastX
+  const deltaY = e.clientY - dragHelper.value.lastY
+  moveInputCanvasGroup(deltaX, deltaY)
+  
+  dragHelper.value.lastX = e.clientX
+  dragHelper.value.lastY = e.clientY
+}
+
+const inputCanvasGroupMouseWheelHandler = (e) => {
+  const factor = e.deltaY < 0 ? 1.1 : 0.9
+  scaleInputCanvasGroup(factor, e.offsetX, e.offsetY)
+}
+
+const inputCanvasGroupMouseLeaveHandler = () => {
+  dragHelper.value.mousedown = false
+}
+
+// ========== 画布变换 ==========
+const scaleInputCanvasGroup = (deltaFactor, offsetX, offsetY) => {
+  if (scaleFactor.value * deltaFactor < 0.101) return
+  
+  const oldFactor = scaleFactor.value
+  scaleFactor.value *= deltaFactor
+  
+  const deltaX = offsetX * (oldFactor - scaleFactor.value)
+  const deltaY = offsetY * (oldFactor - scaleFactor.value)
+  moveInputCanvasGroup(deltaX, deltaY)
+}
+
+const moveInputCanvasGroup = (deltaX, deltaY) => {
+  const canvas = inputCanvas.value
+  const newX = translateX.value + deltaX
+  const newY = translateY.value + deltaY
+  const scale = scaleFactor.value
+  
+  const inBounds = (
+    newX > -canvas.offsetWidth * scale * 0.9 &&
+    newX < canvas.offsetWidth * (1 - scale * 0.1) &&
+    newY > -canvas.offsetHeight * scale * 0.9 &&
+    newY < canvas.offsetHeight * (1 - scale * 0.1)
+  )
+  
+  if (inBounds) {
+    translateX.value = newX
+    translateY.value = newY
+  }
+}
+
+// ========== 标记点操作 ==========
+const addWayPoint = (e) => {
+  const { x, y } = getRealPosition(e.offsetX, e.offsetY)
+  marker.value.addPoint(x, y)
+}
+
+const popWayPoint = () => {
+  marker.value.popPoint()
+}
+
+const addMarkedAreaMask = () => {
+  maskManager.value.orMask(marker.value.collectMask())
+  marker.value.reset()
+}
+
+const intersectMarkedAreaMask = () => {
+  maskManager.value.andMask(marker.value.collectMask())
+  marker.value.reset()
+}
+
+const exceptMarkedAreaMask = () => {
+  maskManager.value.exceptMask(marker.value.collectMask())
+  marker.value.reset()
+}
+
+// ========== 图像处理 ==========
+const processImageAsync = () => {
+  setTimeout(() => {
+    addMarkedAreaMask()
+    if (maskManager.value.isMarked()) {
+      processImageUnderMask()
+    } else {
+      processWholeImage()
+    }
+  }, 100)
+  
+  isImageProcessing.value = true
+  nextTick()
+}
+
+const processWholeImage = () => {
+  const inCanvas = inputCanvas.value
+  const outCanvas = outputCanvas.value
+  
+  outCanvas.width = inCanvas.width
+  outCanvas.height = inCanvas.height
+  
+  const inCtx = inCanvas.getContext("2d")
+  const outCtx = outCanvas.getContext("2d")
+  const imageInData = inCtx.getImageData(0, 0, inCanvas.width, inCanvas.height)
+  const imageOutData = outCtx.getImageData(0, 0, outCanvas.width, outCanvas.height)
+  const backgroundColor = [colorRGB.value.r, colorRGB.value.g, colorRGB.value.b]
+  
+  for (let i = 0; i < imageInData.height; i++) {
+    for (let j = 0; j < imageInData.width; j++) {
+      ImageProcessor.processPixel(imageInData, imageOutData, i, j, backgroundColor)
+    }
+  }
+  
+  outCtx.putImageData(imageOutData, 0, 0)
+  imageOut.value = outCanvas.toDataURL()
+  isImageProcessing.value = false
+  isImageProcessed.value = true
+}
+
+const processImageUnderMask = () => {
+  const inCanvas = inputCanvas.value
+  const outCanvas = outputCanvas.value
+  
+  outCanvas.width = inCanvas.width
+  outCanvas.height = inCanvas.height
+  
+  const inCtx = inCanvas.getContext("2d")
+  const outCtx = outCanvas.getContext("2d")
+  const imageInData = inCtx.getImageData(0, 0, inCanvas.width, inCanvas.height)
+  const imageOutData = outCtx.getImageData(0, 0, outCanvas.width, outCanvas.height)
+  const backgroundColor = [colorRGB.value.r, colorRGB.value.g, colorRGB.value.b]
+  
+  for (let i = 0; i < imageInData.height; i++) {
+    for (let j = 0; j < imageInData.width; j++) {
+      if (maskManager.value.isPointSelected(j, i)) {
+        ImageProcessor.processPixel(imageInData, imageOutData, i, j, backgroundColor)
       } else {
-        this.scaleInputCanvasGroup(0.9, e.offsetX, e.offsetY);
+        ImageToolKit.copyPixel(imageInData, imageOutData, i, j)
       }
-    },
-    inputCanvasGroupMouseLeaveHandler() {
-      this.dragHelper.mousedown = false;
-    },
-    scaleInputCanvasGroup(deltaFactor, offsetX, offsetY) {
-      if (this.scaleFactor * deltaFactor < 0.101) {
-        return;
-      }
+    }
+  }
+  
+  outCtx.putImageData(imageOutData, 0, 0)
+  imageOut.value = outCanvas.toDataURL()
+  isImageProcessing.value = false
+  isImageProcessed.value = true
+}
 
-      let oldFactor = this.scaleFactor;
-      this.scaleFactor *= deltaFactor;
-
-      this.moveInputCanvasGroup(
-        offsetX * (oldFactor - this.scaleFactor),
-        offsetY * (oldFactor - this.scaleFactor)
-      );
-    },
-    moveInputCanvasGroup(deltaX, deltaY) {
-      // 左侧画面外的部分不能超过当前图片大小的90%
-      let inLeftBound =
-        this.translateX + deltaX >
-        -this.inputCanvas.offsetWidth * this.scaleFactor * 0.9;
-      // 右侧画面外的部分不能超过当前图片大小的90%
-      let inRightBound =
-        this.translateX + deltaX <
-        this.inputCanvas.offsetWidth -
-          this.inputCanvas.offsetWidth * this.scaleFactor * 0.1;
-      // 上侧画面外的部分不能超过当前图片大小的90%
-      let inUpBound =
-        this.translateY + deltaY >
-        -this.inputCanvas.offsetHeight * this.scaleFactor * 0.9;
-      // 下侧画面外的部分不能超过当前图片大小的90%
-      let inDownBound =
-        this.translateY + deltaY <
-        this.inputCanvas.offsetHeight -
-          this.inputCanvas.offsetHeight * this.scaleFactor * 0.1;
-
-      if (inLeftBound && inRightBound && inUpBound && inDownBound) {
-        this.translateX += deltaX;
-        this.translateY += deltaY;
-      }
-    },
-    /**选取颜色作为透明区域参考色 */
-    pickColor(e) {
-      let { x, y } = this.getRealPosition(e.offsetX, e.offsetY);
-      console.log(
-        "pick color(" +
-          x +
-          "," +
-          y +
-          ") from (" +
-          this.inputCanvas.width +
-          "," +
-          this.inputCanvas.height +
-          ")"
-      );
-      let raw_colorRGB = this.inputCanvas
-        .getContext("2d")
-        .getImageData(x, y, 1, 1).data;
-      this.colorRGB = {
-        r: raw_colorRGB[0],
-        g: raw_colorRGB[1],
-        b: raw_colorRGB[2],
-      };
-      this.colorSelected = true;
-    },
-    /**格式化颜色，用于显示被选取的透明区域参考色，以及被选取的背景色 */
-    formatColor(raw_color) {
-      return (
-        "#" +
-        ((1 << 24) + (raw_color.r << 16) + (raw_color.g << 8) + raw_color.b)
-          .toString(16)
-          .substr(1)
-      );
-    },
-    /**切换使用高级背景 */
-    toggleAdvanceChangeBackground() {
-      this.advanceChangeBackground = !this.advanceChangeBackground;
-    },
-    /**添加处理区域标记点 */
-    addWayPoint(e) {
-      let { x, y } = this.getRealPosition(e.offsetX, e.offsetY);
-      console.log("add point(" + x + "," + y + ")");
-      this.marker.addPoint(x, y);
-    },
-    /**弹出最后添加的处理区域标记点 */
-    popWayPoint() {
-      console.log("pop point");
-      this.marker.popPoint();
-    },
-    addMarkedAreaMask() {
-      this.maskManager.orMask(this.marker.collectMask());
-      this.marker.reset();
-    },
-    intersectMarkedAreaMask() {
-      this.maskManager.andMask(this.marker.collectMask());
-      this.marker.reset();
-    },
-    exceptMarkedAreaMask() {
-      this.maskManager.exceptMask(this.marker.collectMask());
-      this.marker.reset();
-    },
-    /**异步处理 */
-    processImageAsync() {
-      setTimeout(() => {
-        this.addMarkedAreaMask();
-        if (this.maskManager.isMarked()) {
-          this.processImageUnderMask();
-        } else {
-          this.processWholeImage();
-        }
-      }, 100);
-      this.isImageProcessing = true;
-      this.$nextTick();
-      console.log("async");
-    },
-    processWholeImage() {
-      this.outputCanvas.width = this.inputCanvas.width;
-      this.outputCanvas.height = this.inputCanvas.height;
-
-      let imageInData = this.inputCanvas
-        .getContext("2d")
-        .getImageData(0, 0, this.inputCanvas.width, this.inputCanvas.height);
-      let imageOutData = this.outputCanvas
-        .getContext("2d")
-        .getImageData(0, 0, this.outputCanvas.width, this.outputCanvas.height);
-      let backgroundColor = [this.colorRGB.r, this.colorRGB.g, this.colorRGB.b];
-
-      console.log(imageOutData.width + " " + imageOutData.height);
-
-      for (let i = 0; i < imageInData.height; i++) {
-        for (let j = 0; j < imageInData.width; j++) {
-          ImageProcessor.processPixel(
-            imageInData,
-            imageOutData,
-            i,
-            j,
-            backgroundColor
-          );
-        }
-        console.log(i + "/" + imageInData.height);
-      }
-      this.outputCanvas.getContext("2d").putImageData(imageOutData, 0, 0);
-      this.imageOut = this.outputCanvas.toDataURL();
-      this.isImageProcessing = false;
-      this.isImageProcessed = true;
-    },
-
-    processImageUnderMask() {
-      this.outputCanvas.width = this.inputCanvas.width;
-      this.outputCanvas.height = this.inputCanvas.height;
-
-      let imageInData = this.inputCanvas
-        .getContext("2d")
-        .getImageData(0, 0, this.inputCanvas.width, this.inputCanvas.height);
-      let imageOutData = this.outputCanvas
-        .getContext("2d")
-        .getImageData(0, 0, this.outputCanvas.width, this.outputCanvas.height);
-      let backgroundColor = [this.colorRGB.r, this.colorRGB.g, this.colorRGB.b];
-
-      console.log(imageOutData.width + " " + imageOutData.height);
-
-      for (let i = 0; i < imageInData.height; i++) {
-        for (let j = 0; j < imageInData.width; j++) {
-          // 坐标的x是列序号，y是行序号，因此这里需要倒过来
-          if (this.maskManager.isPointSelected(j, i)) {
-            ImageProcessor.processPixel(
-              imageInData,
-              imageOutData,
-              i,
-              j,
-              backgroundColor
-            );
-          } else {
-            ImageToolKit.copyPixel(imageInData, imageOutData, i, j);
-          }
-        }
-        console.log(i + "/" + imageInData.height);
-      }
-      this.outputCanvas.getContext("2d").putImageData(imageOutData, 0, 0);
-      this.imageOut = this.outputCanvas.toDataURL();
-      this.isImageProcessing = false;
-      this.isImageProcessed = true;
-    },
-  },
-};
+const toggleAdvanceChangeBackground = () => {
+  advanceChangeBackground.value = !advanceChangeBackground.value
+}
 </script>
 
 <style>
