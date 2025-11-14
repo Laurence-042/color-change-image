@@ -1,11 +1,13 @@
 <template>
   <v-app>
-    <v-navigation-drawer v-model="drawer" :clipped="$vuetify.breakpoint.lgAndUp" app>
+    <v-navigation-drawer v-model="drawer" app>
       <v-list nav>
         <!-- 切换主题（简单背景调整） -->
         <v-select
           v-model="useDarkTheme"
           :items="[{text:'浅色主题',value:false},{text:'深色主题',value:true}]"
+          item-title="text"
+          item-value="value"
           single-line
           class="full-width"
         ></v-select>
@@ -48,8 +50,7 @@
               v-show="advanceChangeBackground&&selectedBackgroundMode=='内置背景图片'"
               v-model="selectedBuildInBackgroundImage"
               :items="buildInBackgroundImagesPaths"
-              :default="buildInBackgroundImagesPaths[0]"
-              item-text="name"
+              item-title="name"
               item-value="path"
               single-line
               class="full-width"
@@ -59,7 +60,7 @@
       </v-list>
     </v-navigation-drawer>
 
-    <v-app-bar app :clipped-left="$vuetify.breakpoint.lgAndUp" color="blue darken-3" dark>
+    <v-app-bar app color="blue darken-3" dark>
       <v-app-bar-nav-icon @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
 
       <v-file-input class="full-width" accept="image/*" label="选择待加工图片" @change="selectImage"></v-file-input>
@@ -199,14 +200,37 @@
 
 
 <script>
+import { useTheme } from 'vuetify'
 import ImageProcessor from "./util/ImageProcessor";
 import ImageToolKit from "./util/ImageToolKit";
 import MaskManager from "./util/MaskManager";
 import SmoothLineMarker from "./util/smoothLineMarker";
 import SimilarColorMarker from "./util/similarColorMarker";
 
+// 使用 Vite 的 glob 导入功能动态加载所有背景图片
+const backgroundImageModules = import.meta.glob('@/assets/backgrounds/*', { eager: true, import: 'default' })
+
 export default {
   name: "App",
+  setup() {
+    const theme = useTheme()
+    
+    // 将导入的模块转换为 { filename: url } 格式
+    const backgroundImages = {}
+    const buildInBackgroundImagesPaths = []
+    
+    for (const path in backgroundImageModules) {
+      const filename = path.split('/').pop()
+      const name = filename.replace(/\.\w+$/, '') // 去除扩展名作为显示名称
+      backgroundImages[filename] = backgroundImageModules[path]
+      buildInBackgroundImagesPaths.push({
+        name: name,
+        path: filename
+      })
+    }
+    
+    return { theme, backgroundImages, buildInBackgroundImagesPaths }
+  },
   data: () => ({
     /**导航抽屉 */
     drawer: null,
@@ -234,15 +258,7 @@ export default {
     selectedBackgroundMode: "选择纯色",
     pickedBackgroundColor: { r: 255, g: 255, b: 255 },
     selectedBackgroundImage: null,
-    buildInBackgroundImagesPaths: [
-      { name: "logo", path: "logo.png" },
-      { name: "粉蓝渐变", path: "粉蓝渐变.jpeg" },
-      { name: "红渐变", path: "红渐变.jpeg" },
-      { name: "黄渐变", path: "黄渐变.jpeg" },
-      { name: "绿渐变", path: "绿渐变.jpeg" },
-      { name: "晶格", path: "晶格.jpg" },
-    ],
-    selectedBuildInBackgroundImage: "logo.png",
+    selectedBuildInBackgroundImage: "",
 
     imageHeight: "0px",
 
@@ -294,12 +310,17 @@ export default {
       this.inputCanvas
     );
     this.maskManager = new MaskManager(this.maskCanvas);
+    
+    // 设置默认选中第一个背景图片
+    if (this.buildInBackgroundImagesPaths.length > 0) {
+      this.selectedBuildInBackgroundImage = this.buildInBackgroundImagesPaths[0].path;
+    }
   },
   watch: {
     /**切换主题 */
-    useDarkTheme() {
+    useDarkTheme(newVal) {
       this.advanceChangeBackground = false;
-      this.$vuetify.theme.isDark = this.useDarkTheme;
+      this.theme.global.name.value = newVal ? 'dark' : 'light';
     },
     similarColorMarkerThreshold(newVal) {
       this.similarColorMarker.threshold = newVal;
@@ -322,10 +343,7 @@ export default {
           };
         case "内置背景图片":
           return {
-            "background-image":
-              "url(" +
-              require("@/assets/" + this.selectedBuildInBackgroundImage) +
-              ")",
+            "background-image": `url(${this.backgroundImages[this.selectedBuildInBackgroundImage]})`,
             "background-size": "cover",
           };
         case "本机背景图片":
@@ -360,11 +378,12 @@ export default {
   },
   methods: {
     /**选取本机图片作为输入 */
-    selectImage(file) {
-      let reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (e) => {
-        let image = e.target.result;
+    async selectImage(event) {
+      const file = event?.target?.files?.[0];
+      if (!file) return;
+      
+      try {
+        const image = await this.readFileAsDataURL(file);
         console.log("image readed");
         this.scaleFactor = 1;
         this.translateX = 0;
@@ -374,15 +393,29 @@ export default {
 
         this.imageIn = image;
         this.isImageLoaded = true;
-      };
+      } catch (error) {
+        console.error("Failed to read image:", error);
+      }
     },
     /**选取本机图片作为输出图片的背景 */
-    selectBackgroundImage(file) {
-      let reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (e) => {
-        this.selectedBackgroundImage = e.target.result;
-      };
+    async selectBackgroundImage(event) {
+      const file = event?.target?.files?.[0];
+      if (!file) return;
+      
+      try {
+        this.selectedBackgroundImage = await this.readFileAsDataURL(file);
+      } catch (error) {
+        console.error("Failed to read background image:", error);
+      }
+    },
+    /**将文件读取为 DataURL */
+    readFileAsDataURL(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (error) => reject(error);
+        reader.readAsDataURL(file);
+      });
     },
     /**将图像绘制在指定canvas上，设置canvas尺寸，设置包裹canvas的父元素div的高度，估计 */
     importImageToInputCanvas(imageDataUrl) {
