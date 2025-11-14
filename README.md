@@ -24,7 +24,7 @@ npm run lint
 See [Configuration Reference](https://cli.vuejs.org/config/).
 
 ## 在线版
-https://laurence-042.github.io/color-change-image/
+https://laurence-042.github.io/project/color-change-image/demo/
 
 这个应用已更新到可以正式使用的程度，进行恰当标记后处理得到的图片中，被标记区域的颜色将随背景颜色变化而变化，而且会一定程度上地保留变色区域的阴影高光与花纹。具体保留效果取决于原图相应区域的颜色，颜色越接近平和的灰色效果越好。
 

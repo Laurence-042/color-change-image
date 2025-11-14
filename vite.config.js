@@ -14,7 +14,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src')
     }
   },
-  base: process.env.NODE_ENV === 'production' ? '/color-change-image/' : '/',
+  base: process.env.NODE_ENV === 'production' ? '/project/color-change-image/demo/' : '/',
   server: {
     port: 8080
   }
